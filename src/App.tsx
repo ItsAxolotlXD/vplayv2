@@ -1,0 +1,2025 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { useState, useEffect, useRef, ChangeEvent, FormEvent, ReactNode } from "react";
+import { Search, User, Tv, Calendar, Home, Play, Pause, Radio, Info, Sun, Moon, Maximize, Settings, Volume2, VolumeX, CheckCircle2, Shield, LogOut, LogIn, Heart, X, Lock, Terminal, Zap, Clock, History, MousePointer2, Sliders, ChevronLeft, ChevronRight, Mic, Layers, Filter } from "lucide-react";
+import Hls from "hls.js";
+import { motion, AnimatePresence, MotionConfig } from "motion/react";
+import { auth, db } from "./firebase";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail, User as FirebaseUser } from "firebase/auth";
+import { doc, getDoc, setDoc, collection, getDocs, serverTimestamp, updateDoc, arrayUnion, getDocFromServer } from "firebase/firestore";
+
+import { channels, Channel } from "./channels";
+
+// Test connection as per critical directive
+async function testFirestoreConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration. The client is offline.");
+    }
+  }
+}
+testFirestoreConnection();
+
+const SettingsIcon = ({ className }: { className?: string }) => (
+  <img 
+    src="https://static.wikia.nocookie.net/ftv/images/9/97/Settungs.png/revision/latest?cb=20260411085024&path-prefix=vi" 
+    alt="Settings" 
+    className={className}
+    referrerPolicy="no-referrer"
+  />
+);
+
+const baseTabs = [
+  { name: "Trang chủ", icon: Home, id: "Trang chủ" },
+  { name: "Truyền hình", icon: Tv, id: "Truyền hình" },
+  { name: "Phát thanh", icon: Radio, id: "Phát thanh" },
+  { name: "Hồ sơ", icon: User, id: "Hồ sơ" },
+  { name: "Cài đặt", icon: SettingsIcon, id: "Cài đặt" },
+];
+
+// Channel type is imported from channels.ts
+
+function LiquidModal({ isOpen, onClose, children, isDark, title, description, liquidGlass }: { 
+  isOpen: boolean, 
+  onClose: () => void, 
+  children?: ReactNode, 
+  isDark: boolean,
+  title?: string,
+  description?: string,
+  liquidGlass: boolean
+}) {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className={`absolute inset-0 bg-black/40 ${liquidGlass ? "backdrop-blur-sm" : ""}`}
+          />
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.8, opacity: 0, y: 20 }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className={`relative w-full max-w-sm overflow-hidden border bg-white/90 border-white/60 text-slate-900 shadow-2xl ${
+              liquidGlass ? "rounded-[40px] backdrop-blur-3xl" : "rounded-2xl backdrop-blur-none"
+            }`}
+          >
+            <div className="p-8 text-center">
+              {title && <h3 className="text-2xl font-bold mb-2 text-slate-900">{title}</h3>}
+              {description && <p className="text-black/60 text-sm leading-relaxed mb-6 font-medium">{description}</p>}
+              {children}
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function ChannelLogo({ src, alt, className, isDark }: { src: string, alt: string, className?: string, isDark: boolean }) {
+  const [error, setError] = useState(false);
+
+  if (error || !src) {
+    return (
+      <div className={`${className} flex flex-col items-center justify-center bg-slate-800/50 rounded-lg border border-slate-700/50 p-1 text-center`}>
+        <Tv className="h-6 w-6 mb-1 text-slate-500" />
+        <span className="text-[10px] font-bold leading-tight line-clamp-2 uppercase opacity-60">{alt}</span>
+      </div>
+    );
+  }
+
+  const scaleMap: { [key: string]: string } = {
+    "Lâm Đồng 1 (LTV1)": "scale-[1.5]",
+    "Đà Nẵng 1 (DNRT1)": "scale-[1.8]",
+    "Đà Nẵng 2 (DNRT2)": "scale-[1.8]",
+    "Thái Nguyên (TN)": "scale-[1.6]",
+    "Điện Biên (ĐTV)": "scale-[0.9]",
+    "Hưng Yên (HYTV)": "scale-[1.8]",
+    "Đồng Tháp 1 (THĐT1)": "scale-[1.5]",
+    "Huế (HueTV)": "scale-[1.5]",
+    "Tây Ninh (TN)": "scale-[1.5]",
+    "H1": "scale-[1.5]",
+    "H2": "scale-[1.5]",
+    "Đắk Lắk (DRT)": "scale-150",
+    "Nghệ An (NTV)": "scale-150",
+    "Quảng Ngãi 1 (QNgTV1)": "scale-[1.6]",
+    "Quảng Ngãi 2 (QNgTV2)": "scale-[1.6]"
+  };
+
+  const scaleClass = scaleMap[alt] || "";
+
+  return (
+    <img 
+      src={src} 
+      alt={alt} 
+      referrerPolicy="no-referrer"
+      onError={() => setError(true)}
+      className={`${className} object-contain transition-all duration-300 ${!isDark ? "drop-shadow-[0_16px_32px_rgba(0,0,0,0.3)]" : ""} ${scaleClass}`} 
+    />
+  );
+}
+
+function ChannelCard({ ch, onClick, isDark, isActive, favorites, toggleFavorite, liquidGlass }: {
+  ch: Channel,
+  onClick: () => void,
+  isDark: boolean,
+  isActive?: boolean,
+  favorites: string[],
+  toggleFavorite: (ch: Channel) => void,
+  liquidGlass: boolean,
+  key?: string | number
+}) {
+  const isMaintenance = ch.status === "maintenance";
+
+  return (
+    <div className="relative group">
+      <motion.button
+        whileHover={{ scale: 1.05, boxShadow: isActive ? "0 0 30px rgba(59,130,246,0.6)" : "0 0 20px rgba(0,0,0,0.1)" }}
+        whileTap={{ scale: 0.9, rotate: -1 }}
+        onClick={onClick}
+        className={`w-full aspect-video p-2 md:p-10 flex items-center justify-center transition-all duration-300 border relative overflow-hidden ${
+          liquidGlass ? "rounded-2xl backdrop-blur-xl" : "rounded-lg backdrop-blur-none"
+        } ${
+          isActive
+            ? `${isDark ? "bg-slate-800/60" : "bg-white/60"} border-blue-500 ring-2 ring-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.4)]`
+            : isDark
+            ? "bg-slate-800/40 border-slate-700/50 shadow-sm shadow-black/20"
+            : "bg-white/40 border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.08)]"
+        }`}
+      >
+        {isMaintenance && (
+          <div className="absolute top-0 left-0 bg-amber-500 text-white text-[10px] font-black px-2 py-1 rounded-br-lg z-20 shadow-lg">
+            BẢO TRÌ
+          </div>
+        )}
+        <ChannelLogo src={ch.logo} alt={ch.name} className={`w-full h-full ${isMaintenance ? "grayscale opacity-40" : ""}`} isDark={isDark} />
+      </motion.button>
+      <button 
+        onClick={(e) => { e.stopPropagation(); toggleFavorite(ch); }}
+        className={`absolute top-2 right-2 p-1.5 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/60 z-10 ${favorites.includes(ch.name) ? "text-red-500" : "text-white"}`}
+      >
+        <Heart className={`h-4 w-4 ${favorites.includes(ch.name) ? "fill-red-500" : ""}`} />
+      </button>
+    </div>
+  );
+}
+
+function HomeContent({ setActiveTab, setActiveChannel, isDark, favorites, toggleFavorite, liquidGlass }: {
+  setActiveTab: (tab: string) => void,
+  setActiveChannel: (ch: typeof channels[0]) => void,
+  isDark: boolean,
+  favorites: string[],
+  toggleFavorite: (ch: typeof channels[0]) => void,
+  liquidGlass: boolean
+}) {
+  const [slideIndex, setSlideIndex] = useState(0);
+  const [direction, setDirection] = useState(0);
+  const [randomChannels, setRandomChannels] = useState<typeof channels>([]);
+  const slides = [
+    "https://plain-apac-prod-public.komododecks.com/202604/06/0rdrbV8FYCssv6LnT4aJ/image.png",
+    "https://plain-apac-prod-public.komododecks.com/202604/06/DN6JPkubjkRfKgJlYYIa/image.png"
+  ];
+
+  const paginate = (newDirection: number) => {
+    setDirection(newDirection);
+    setSlideIndex((prev) => (prev + newDirection + slides.length) % slides.length);
+  };
+
+  useEffect(() => {
+    const shuffled = [...channels].sort(() => 0.5 - Math.random());
+    setRandomChannels(shuffled.slice(0, 12));
+
+    const interval = setInterval(() => {
+      paginate(1);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const variants = {
+    enter: (direction: number) => ({
+      x: direction > 0 ? '100%' : '-100%',
+      opacity: 0
+    }),
+    center: {
+      zIndex: 1,
+      x: 0,
+      opacity: 1
+    },
+    exit: (direction: number) => ({
+      zIndex: 0,
+      x: direction < 0 ? '100%' : '-100%',
+      opacity: 0
+    })
+  };
+
+  const favoriteChannels = channels.filter(ch => favorites.includes(ch.name));
+
+  return (
+    <div className="p-4 md:p-6 space-y-10">
+      {/* Welcome Message */}
+      <div className="text-center py-6">
+        <motion.h1 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`text-3xl md:text-5xl font-black tracking-tighter ${isDark ? "text-white" : "text-slate-900"}`}
+        >
+          Chào mừng đến với <span className="text-blue-500">Vplay!</span>
+        </motion.h1>
+        <p className={`mt-2 text-sm md:text-base font-medium ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+          Trải nghiệm truyền hình trực tuyến đỉnh cao
+        </p>
+      </div>
+
+      {/* Slider */}
+      <div className={`relative w-full max-w-5xl mx-auto aspect-[2.4/1] overflow-hidden shadow-2xl border border-white/10 bg-slate-900/20 group ${
+        liquidGlass ? "rounded-3xl" : "rounded-xl"
+      }`}>
+        <AnimatePresence initial={false} custom={direction}>
+          <motion.img
+            key={slideIndex}
+            src={slides[slideIndex]}
+            custom={direction}
+            variants={variants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{
+              x: { type: "spring", stiffness: 300, damping: 30 },
+              opacity: { duration: 0.2 }
+            }}
+            referrerPolicy="no-referrer"
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        </AnimatePresence>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none z-10" />
+        
+        {/* Navigation Arrows */}
+        <button 
+          onClick={() => paginate(-1)}
+          className={`absolute left-4 top-1/2 -translate-y-1/2 z-20 p-2 rounded-full bg-black/20 hover:bg-black/40 text-white transition-all opacity-0 group-hover:opacity-100 ${
+            liquidGlass ? "backdrop-blur-md" : "backdrop-blur-none"
+          }`}
+        >
+          <ChevronLeft className="h-6 w-6" />
+        </button>
+        <button 
+          onClick={() => paginate(1)}
+          className={`absolute right-4 top-1/2 -translate-y-1/2 z-20 p-2 rounded-full bg-black/20 hover:bg-black/40 text-white transition-all opacity-0 group-hover:opacity-100 ${
+            liquidGlass ? "backdrop-blur-md" : "backdrop-blur-none"
+          }`}
+        >
+          <ChevronRight className="h-6 w-6" />
+        </button>
+
+        {/* Slide Indicators */}
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-20">
+          {slides.map((_, i) => (
+            <button 
+              key={i} 
+              onClick={() => {
+                setDirection(i > slideIndex ? 1 : -1);
+                setSlideIndex(i);
+              }}
+              className={`h-1.5 rounded-full transition-all duration-500 ${i === slideIndex ? "w-8 bg-blue-500" : "w-2 bg-white/30 hover:bg-white/50"}`}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Favorites Section */}
+      {favoriteChannels.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Heart className="h-5 w-5 text-red-500 fill-red-500" />
+            <h3 className={`text-xl font-bold ${isDark ? "text-white" : "text-slate-950"}`}>Kênh yêu thích</h3>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4">
+            {favoriteChannels.map(ch => (
+              <ChannelCard 
+                key={ch.name} 
+                ch={ch} 
+                onClick={() => setActiveChannel(ch)} 
+                isDark={isDark} 
+                favorites={favorites} 
+                toggleFavorite={toggleFavorite} 
+                liquidGlass={liquidGlass}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Suggested Channels */}
+      <div className="space-y-4">
+        <h3 className={`text-xl font-bold ${isDark ? "text-white" : "text-slate-950"}`}>Kênh đề xuất</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4">
+          {randomChannels.map(ch => (
+            <ChannelCard 
+              key={`${ch.name}-${ch.stream}`} 
+              ch={ch} 
+              onClick={() => setActiveChannel(ch)} 
+              isDark={isDark} 
+              favorites={favorites} 
+              toggleFavorite={toggleFavorite} 
+              liquidGlass={liquidGlass}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TVContent({ active, setActive, isDark, favorites, toggleFavorite, user, onLogin, isDev, liquidGlass, sortOrder, setSortOrder }: { 
+  active: Channel, 
+  setActive: (ch: Channel) => void, 
+  isDark: boolean,
+  favorites: string[],
+  toggleFavorite: (ch: Channel) => void,
+  user: any,
+  onLogin: () => void,
+  isDev?: boolean,
+  liquidGlass: boolean,
+  sortOrder: "default" | "az" | "za",
+  setSortOrder: (val: "default" | "az" | "za") => void
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [isMuted, setIsMuted] = useState(true);
+  const [volume, setVolume] = useState(1);
+  const [levels, setLevels] = useState<Hls.Level[]>([]);
+  const [currentLevel, setCurrentLevel] = useState(-1);
+  const [showQualityMenu, setShowQualityMenu] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterType, setFilterType] = useState<string>("Tất cả");
+
+  // categories definition removed to avoid duplication
+
+  const filteredChannels = channels
+    .filter(ch => {
+      const matchesSearch = ch.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesType = filterType === "Tất cả" 
+        || (filterType === "Hoạt động" && ch.status !== "maintenance")
+        || (filterType === "Bảo trì" && ch.status === "maintenance")
+        || ch.category === filterType;
+      return matchesSearch && matchesType;
+    })
+    .sort((a, b) => {
+      if (sortOrder === "default") return 0;
+      if (sortOrder === "az") return a.name.localeCompare(b.name);
+      return b.name.localeCompare(a.name);
+    });
+
+  const CATEGORY_ORDER = ["VTV", "HTV", "VTVcab", "Địa phương", "Thiết yếu"];
+  const filteredCategories = CATEGORY_ORDER.filter(cat => 
+    filteredChannels.some(ch => ch.category === cat)
+  );
+
+  useEffect(() => {
+    if (!user && !isDev) return;
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Track watched channel
+    if (user) {
+      const userRef = doc(db, "users", user.uid);
+      updateDoc(userRef, {
+        watchedChannels: arrayUnion(active.name)
+      }).catch(err => console.error("Error updating watched channels:", err));
+    }
+
+    video.volume = volume;
+
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+    }
+
+    let hls: Hls | null = null;
+
+    if (Hls.isSupported()) {
+      hls = new Hls();
+      hlsRef.current = hls;
+      hls.loadSource(active.stream);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play().catch(e => {
+          console.warn("Autoplay prevented, trying muted", e);
+          video.muted = true;
+          setIsMuted(true);
+          video.play();
+        });
+        setLevels(hls!.levels);
+        setCurrentLevel(hls!.currentLevel);
+      });
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
+        setCurrentLevel(data.level);
+      });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = active.stream;
+      video.addEventListener('loadedmetadata', () => {
+        video.play().catch(() => {
+          video.muted = true;
+          setIsMuted(true);
+          video.play();
+        });
+      });
+    }
+
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [active, user]);
+
+  const togglePlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      video.play();
+      setIsPlaying(true);
+    } else {
+      video.pause();
+      setIsPlaying(false);
+    }
+  };
+
+  const toggleMute = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !video.muted;
+    setIsMuted(video.muted);
+  };
+
+  const handleVolumeChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    setVolume(val);
+    if (videoRef.current) {
+      videoRef.current.volume = val;
+      if (val > 0 && isMuted) {
+        videoRef.current.muted = false;
+        setIsMuted(false);
+      } else if (val === 0 && !isMuted) {
+        videoRef.current.muted = true;
+        setIsMuted(true);
+      }
+    }
+  };
+
+  const setQuality = (level: number) => {
+    if (hlsRef.current) {
+      hlsRef.current.currentLevel = level;
+      setShowQualityMenu(false);
+    }
+  };
+
+  const toggleFullscreen = () => {
+    const container = videoRef.current?.parentElement;
+    if (!container) return;
+    if (!document.fullscreenElement) {
+      container.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  // categories definition removed to avoid duplication
+
+  return (
+    <div className="flex-1 p-4 md:p-6 overflow-y-auto">
+      {/* VIDEO PLAYER */}
+      <div className={`aspect-video bg-black mb-6 flex items-center justify-center border shadow-2xl relative overflow-hidden group ${
+        liquidGlass ? "rounded-2xl" : "rounded-lg"
+      } ${isDark ? "border-slate-800" : "border-slate-300"}`}>
+        {!user && !isDev ? (
+          <div className={`absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-900/40 p-6 text-center ${
+            liquidGlass ? "backdrop-blur-xl" : "backdrop-blur-none"
+          }`}>
+            <motion.div 
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className={`p-10 border shadow-2xl flex flex-col items-center space-y-6 bg-white/80 border-black/5 ${
+                liquidGlass ? "rounded-[40px]" : "rounded-2xl"
+              }`}
+            >
+              <div className="p-4 rounded-full bg-blue-50">
+                <Lock className="h-10 w-10 text-blue-600" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-2xl font-bold text-slate-900">Đăng nhập để xem</h3>
+                <p className="text-slate-500 text-sm max-w-[280px]">Vui lòng đăng nhập tài khoản VPlay để có thể xem kênh trực tuyến này.</p>
+              </div>
+              <button 
+                onClick={onLogin}
+                className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-3xl font-bold transition-all hover:scale-105 active:scale-95 shadow-lg shadow-blue-600/20"
+              >
+                Đăng nhập ngay
+              </button>
+            </motion.div>
+          </div>
+        ) : active.status === "maintenance" ? (
+          <div className={`absolute inset-0 flex flex-col items-center justify-center ${liquidGlass ? "bg-black/20 backdrop-blur-xl" : "bg-black"}`}>
+            <img 
+              src="https://upload.wikimedia.org/wikipedia/commons/5/5b/EBU_Colorbars_HD.svg" 
+              alt="Maintenance" 
+              className={`w-full h-full object-cover ${liquidGlass ? "opacity-40" : "opacity-80"}`}
+              referrerPolicy="no-referrer"
+            />
+            <div className={`absolute inset-0 flex flex-col items-center justify-center ${liquidGlass ? "bg-white/5" : "bg-black/40"} backdrop-blur-[2px]`}>
+              <div className={`${liquidGlass ? "bg-amber-500/80 backdrop-blur-md" : "bg-amber-500"} text-white px-6 py-3 rounded-2xl font-black text-xl shadow-2xl animate-pulse border-2 border-white/20 uppercase`}>
+                KÊNH ĐANG BẢO TRÌ
+              </div>
+              <p className="text-white/80 mt-4 font-medium text-sm drop-shadow-md">Vui lòng quay lại sau</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <video
+              ref={videoRef}
+              className="w-full h-full"
+              autoPlay
+              muted={isMuted}
+              onClick={togglePlay}
+            />
+            {/* Tap to Unmute Overlay */}
+            {isMuted && isPlaying && (
+              <button 
+                onClick={toggleMute}
+                className="absolute top-4 right-4 bg-black/60 backdrop-blur-md text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 hover:bg-black/80 transition-all animate-bounce"
+              >
+                <VolumeX className="h-4 w-4" />
+                CHẠM ĐỂ BẬT TIẾNG
+              </button>
+            )}
+            {/* Modern Control Bar */}
+            <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <button onClick={togglePlay} className="text-white hover:text-blue-400 transition-colors">
+                  {isPlaying ? <Pause className="h-8 w-8 fill-white" /> : <Play className="h-8 w-8 fill-white" />}
+                </button>
+                <div className="flex items-center gap-2 group/volume">
+                  <button onClick={toggleMute} className="text-white hover:text-blue-400 transition-colors">
+                    {isMuted || volume === 0 ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
+                  </button>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="1" 
+                    step="0.05" 
+                    value={isMuted ? 0 : volume} 
+                    onChange={handleVolumeChange}
+                    className="w-0 group-hover/volume:w-20 transition-all duration-300 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-4">
+                <button onClick={toggleFullscreen} className="text-white hover:text-blue-400 transition-colors">
+                  <Maximize className="h-6 w-6" />
+                </button>
+                <div className="relative">
+                  <button onClick={() => setShowQualityMenu(!showQualityMenu)} className="text-white hover:text-blue-400 transition-colors">
+                    <SettingsIcon className="h-6 w-6" />
+                  </button>
+                  {showQualityMenu && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      className="absolute bottom-12 right-0 bg-white/90 backdrop-blur-xl rounded-2xl p-2 text-sm text-slate-900 border border-white/60 w-32 shadow-2xl"
+                    >
+                      <button onClick={() => setQuality(-1)} className={`block w-full text-left px-4 py-2 hover:bg-black/5 rounded-xl transition-colors ${currentLevel === -1 ? "text-blue-600 font-bold" : ""}`}>Tự động</button>
+                      {levels.map((level, index) => (
+                        <button key={index} onClick={() => setQuality(index)} className={`block w-full text-left px-4 py-2 hover:bg-black/5 rounded-xl transition-colors ${currentLevel === index ? "text-blue-600 font-bold" : ""}`}>
+                          {level.height}p
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* CHANNEL INFO */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <h2 className={`text-2xl font-bold flex items-center gap-3 ${isDark ? "text-white" : "text-slate-950"}`}>
+            {active.name}
+            {active.status === "maintenance" ? (
+              <span className="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-white"></span>
+                ĐANG BẢO TRÌ
+              </span>
+            ) : (
+              <span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse"></span>
+                TRỰC TIẾP
+              </span>
+            )}
+          </h2>
+          <button 
+            onClick={() => toggleFavorite(active)}
+            className={`p-2 rounded-full transition-all hover:scale-110 ${favorites.includes(active.name) ? "text-red-500" : isDark ? "text-slate-500 hover:text-slate-300" : "text-slate-400 hover:text-slate-600"}`}
+          >
+            <Heart className={`h-6 w-6 ${favorites.includes(active.name) ? "fill-red-500" : ""}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* FILTERS */}
+      <div className="mt-8">
+        <div className="flex flex-col md:flex-row gap-4 mb-8">
+          <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide flex-1">
+            {["Tất cả", "VTV", "HTV", "VTVcab", "Thiết yếu", "Địa phương", "Hoạt động", "Bảo trì"].map((type) => (
+              <button
+                key={type}
+                onClick={() => setFilterType(type)}
+                className={`px-5 py-2.5 md:px-4 md:py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
+                  filterType === type
+                    ? "bg-blue-500 text-white shadow-lg shadow-blue-500/30"
+                    : isDark
+                    ? "bg-slate-800/50 text-slate-400 hover:bg-slate-700/50"
+                    : "bg-white/50 text-slate-600 hover:bg-white"
+                } ${liquidGlass ? "backdrop-blur-md" : ""}`}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                if (sortOrder === "default") setSortOrder("az");
+                else if (sortOrder === "az") setSortOrder("za");
+                else setSortOrder("default");
+              }}
+              className={`p-3.5 md:p-3 rounded-xl border transition-all flex items-center gap-2 ${
+                isDark 
+                  ? "bg-slate-800/50 border-slate-700/50 text-white" 
+                  : "bg-white/50 border-white/60 text-slate-900"
+              } ${liquidGlass ? "backdrop-blur-md" : ""}`}
+              title={sortOrder === "default" ? "Mặc định" : sortOrder === "az" ? "Sắp xếp A-Z" : "Sắp xếp Z-A"}
+            >
+              <Filter className="h-5 w-5" />
+              <span className="text-sm font-medium">
+                {sortOrder === "default" ? "Mặc định" : sortOrder === "az" ? "A-Z" : "Z-A"}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* CHANNEL LIST */}
+        <div className="space-y-8">
+          {filteredCategories.map(cat => (
+            <div key={cat}>
+              <h3 className={`mb-4 text-lg font-semibold ${isDark ? "text-slate-200" : "text-slate-800"}`}>{cat}</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4">
+                {filteredChannels.filter(c => c.category === cat).map((ch) => (
+                  <ChannelCard 
+                    key={`${ch.name}-${ch.stream}`} 
+                    ch={ch} 
+                    onClick={() => setActive(ch)} 
+                    isDark={isDark} 
+                    isActive={active.name === ch.name} 
+                    favorites={favorites} 
+                    toggleFavorite={toggleFavorite} 
+                    liquidGlass={liquidGlass}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+          {filteredChannels.length === 0 && (
+            <div className="text-center py-20">
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-slate-800/50 mb-4">
+                <img 
+                  src="https://static.wikia.nocookie.net/ftv/images/6/63/Search_uci.png/revision/latest?cb=20260411084053&path-prefix=vi" 
+                  alt="Search" 
+                  className="h-10 w-10 object-contain" 
+                  referrerPolicy="no-referrer" 
+                />
+              </div>
+              <h3 className="text-xl font-bold text-slate-400">Không tìm thấy kênh nào</h3>
+              <p className="text-slate-500">Thử tìm kiếm với từ khóa khác</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SearchPopup({ 
+  isDark, 
+  searchQuery, 
+  setActiveChannel, 
+  onClose, 
+  favorites, 
+  liquidGlass,
+  setActiveTab,
+  setIsDark,
+  setLiquidGlass,
+  onLogin,
+  onLogout,
+  setSortOrder
+}: {
+  isDark: boolean,
+  searchQuery: string,
+  setActiveChannel: (ch: typeof channels[0]) => void,
+  onClose: () => void,
+  favorites: string[],
+  liquidGlass: boolean,
+  setActiveTab: (tab: string) => void,
+  setIsDark: (val: boolean) => void,
+  setLiquidGlass: (val: boolean) => void,
+  onLogin: () => void,
+  onLogout: () => void,
+  setSortOrder: (val: "az" | "za") => void
+}) {
+  const filteredChannels = channels.filter(ch => 
+    ch.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    ch.category.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const systemItems = [
+    { name: "Trang chủ", type: "tab", icon: Home, action: () => setActiveTab("Trang chủ") },
+    { name: "Truyền hình", type: "tab", icon: Tv, action: () => setActiveTab("Truyền hình") },
+    { name: "Phát thanh", type: "tab", icon: Radio, action: () => setActiveTab("Phát thanh") },
+    { name: "Cài đặt", type: "tab", icon: SettingsIcon, action: () => setActiveTab("Cài đặt") },
+    { name: "Hồ sơ", type: "tab", icon: User, action: () => setActiveTab("Hồ sơ") },
+    { name: "Chế độ tối", type: "setting", icon: Moon, action: () => setIsDark(!isDark) },
+    { name: "Hiệu ứng kính", type: "setting", icon: Layers, action: () => setLiquidGlass(!liquidGlass) },
+    { name: "Đăng nhập", type: "button", icon: LogIn, action: onLogin },
+    { name: "Đăng xuất", type: "button", icon: LogOut, action: onLogout },
+    { name: "Sắp xếp A-Z", type: "toggle", icon: Filter, action: () => setSortOrder("az") },
+    { name: "Sắp xếp Z-A", type: "toggle", icon: Filter, action: () => setSortOrder("za") },
+  ];
+
+  const filteredSystem = systemItems.filter(item => 
+    item.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const favoriteChannels = channels.filter(ch => favorites.includes(ch.name));
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 20, scale: 0.95 }}
+      className={`absolute bottom-full mb-6 w-full max-w-[400px] border shadow-[0_20px_50px_rgba(0,0,0,0.3)] overflow-hidden ${
+        liquidGlass ? "rounded-[32px] backdrop-blur-3xl" : "rounded-xl backdrop-blur-none"
+      } bg-white/95 border-white/80 shadow-2xl`}
+    >
+      <div className="p-4 space-y-1 max-h-[60vh] overflow-y-auto">
+        {searchQuery.trim() === "" ? (
+          <div className="space-y-4">
+            {favoriteChannels.length > 0 && (
+              <div className="space-y-2">
+                <div className="px-4 py-2 flex items-center gap-2">
+                  <Heart className="w-3 h-3 text-red-500 fill-red-500" />
+                  <p className={`text-[10px] font-bold uppercase tracking-widest text-black/60`}>Kênh yêu thích</p>
+                </div>
+                {favoriteChannels.map(ch => (
+                  <button
+                    key={ch.name}
+                    onClick={() => { setActiveChannel(ch); onClose(); }}
+                    className={`w-full flex items-center gap-4 p-3 rounded-[24px] transition-all hover:scale-[1.02] active:scale-[0.98] group hover:bg-black/5`}
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center border bg-slate-100 border-slate-200`}>
+                      <img src={ch.logo} alt={ch.name} className="w-6 h-6 object-contain" referrerPolicy="no-referrer" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className={`font-bold text-sm text-black`}>{ch.name}</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-black/30" />
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="py-8 text-center space-y-3 text-black">
+              <img 
+                src="https://static.wikia.nocookie.net/ftv/images/6/63/Search_uci.png/revision/latest?cb=20260411084053&path-prefix=vi" 
+                alt="Search" 
+                className="w-12 h-12 mx-auto object-contain" 
+                referrerPolicy="no-referrer" 
+              />
+              <p className="text-sm font-bold">Tìm kiếm kênh chương trình</p>
+            </div>
+          </div>
+        ) : (filteredChannels.length > 0 || filteredSystem.length > 0) ? (
+          <>
+            {filteredSystem.length > 0 && (
+              <div className="space-y-1 mb-4">
+                <div className="px-4 py-2">
+                  <p className={`text-[10px] font-bold uppercase tracking-widest text-black/60`}>Hệ thống & Cài đặt</p>
+                </div>
+                {filteredSystem.map(item => (
+                  <button
+                    key={item.name}
+                    onClick={() => { item.action(); onClose(); }}
+                    className={`w-full flex items-center gap-4 p-3 rounded-[24px] transition-all hover:scale-[1.02] active:scale-[0.98] group hover:bg-black/5`}
+                  >
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-transform group-hover:rotate-3 bg-slate-100 border-slate-200 text-blue-600`}>
+                      <item.icon className="w-6 h-6 fill-current" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className={`font-bold text-sm text-black`}>{item.name}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-black/60">{item.type === "tab" ? "Chuyển Tab" : "Cài đặt"}</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-black/30" />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {filteredChannels.length > 0 && (
+              <div className="space-y-1">
+                <div className="px-4 py-2">
+                  <p className={`text-[10px] font-bold uppercase tracking-widest text-black/60`}>Kênh truyền hình</p>
+                </div>
+                {filteredChannels.map(ch => (
+                  <button
+                    key={ch.name}
+                    onClick={() => { setActiveChannel(ch); onClose(); }}
+                    className={`w-full flex items-center gap-4 p-3 rounded-[24px] transition-all hover:scale-[1.02] active:scale-[0.98] group hover:bg-black/5`}
+                  >
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-transform group-hover:rotate-3 bg-slate-100 border-slate-200`}>
+                      <img src={ch.logo} alt={ch.name} className="w-8 h-8 object-contain" referrerPolicy="no-referrer" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className={`font-bold text-sm text-black`}>{ch.name}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-black/60">{ch.category}</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-black/30" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="py-12 text-center opacity-40 space-y-3 text-black">
+            <img 
+              src="https://static.wikia.nocookie.net/ftv/images/6/63/Search_uci.png/revision/latest?cb=20260411084053&path-prefix=vi" 
+              alt="Search" 
+              className="w-12 h-12 mx-auto object-contain" 
+              referrerPolicy="no-referrer" 
+            />
+            <p className="text-sm font-medium">Không tìm thấy kết quả nào cho "{searchQuery}"</p>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function AdminContent({ isDark, liquidGlass }: { isDark: boolean, liquidGlass: boolean }) {
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    async function fetchUsers() {
+      try {
+        const snapshot = await getDocs(collection(db, "users"));
+        const usersData = snapshot.docs.map(doc => doc.data());
+        setUsers(usersData);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchUsers();
+  }, []);
+
+  if (loading) return <div className="p-8 text-center">Đang tải...</div>;
+  if (error) return <div className="p-8 text-center text-red-500">Lỗi: {error}</div>;
+
+  const filteredUsers = users.filter(u => u.email !== "nguyentrungthu1610@gmail.com");
+
+  return (
+    <div className="p-4 md:p-8 max-w-6xl mx-auto">
+      <h2 className={`text-2xl font-bold mb-6 ${isDark ? "text-white" : "text-slate-900"}`}>Quản trị</h2>
+      <div className={`rounded-xl border overflow-x-auto ${isDark ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white"}`}>
+        <table className="w-full text-left min-w-[600px]">
+          <thead className={`border-b ${isDark ? "border-slate-800 bg-slate-800/50 text-slate-300" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+            <tr>
+              <th className="p-4 font-medium">Người dùng</th>
+              <th className="p-4 font-medium">Ngày tạo</th>
+              <th className="p-4 font-medium">Đã xem</th>
+            </tr>
+          </thead>
+          <tbody className={`divide-y ${isDark ? "divide-slate-800 text-slate-300" : "divide-slate-200 text-slate-700"}`}>
+            {filteredUsers.map(u => (
+              <tr key={u.uid}>
+                <td className="p-4">
+                  <div className="flex items-center gap-3">
+                    {u.photoURL ? <img src={u.photoURL} className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" /> : <div className="w-8 h-8 rounded-full bg-slate-300 flex items-center justify-center"><User className="w-4 h-4 text-slate-600" /></div>}
+                    <div className="flex flex-col">
+                      <span className="font-medium">{u.displayName || "Chưa có tên"}</span>
+                      <span className="text-xs opacity-50">{u.email}</span>
+                    </div>
+                  </div>
+                </td>
+                <td className="p-4">{u.createdAt?.toDate ? u.createdAt.toDate().toLocaleDateString() : ""}</td>
+                <td className="p-4">
+                  <div className="flex flex-wrap gap-1">
+                    {u.watchedChannels && u.watchedChannels.length > 0 ? (
+                      u.watchedChannels.map((chName: string) => (
+                        <span key={chName} className={`px-2 py-0.5 rounded-full text-[10px] ${isDark ? "bg-blue-500/20 text-blue-400" : "bg-blue-100 text-blue-700"}`}>
+                          {chName}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs opacity-40 italic">Chưa xem kênh nào</span>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {filteredUsers.length === 0 && (
+              <tr>
+                <td colSpan={3} className="p-4 text-center text-slate-500">Chưa có người dùng nào khác.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ProfileContent({ isDark, user, userData, setUserData, onAlert, onLogin, liquidGlass }: { 
+  isDark: boolean, 
+  user: FirebaseUser | null, 
+  userData: any, 
+  setUserData: any, 
+  onAlert: (title: string, msg: string) => void,
+  onLogin: () => void,
+  liquidGlass: boolean
+}) {
+  const [name, setName] = useState(userData?.displayName || user?.displayName || "");
+  const [avatar, setAvatar] = useState(userData?.photoURL || user?.photoURL || "");
+  const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setName(userData?.displayName || user?.displayName || "");
+    setAvatar(userData?.photoURL || user?.photoURL || "");
+  }, [user, userData]);
+
+  // Mock activity data - in a real app this would come from Firestore
+  const activities = [
+    { type: 'view', channel: 'VTV3', time: '14:30', date: "Hôm nay", icon: Tv },
+    { type: 'search', query: 'Phim hành động', time: '12:15', date: "Hôm nay", icon: Search },
+    { type: 'tab', name: "Truyền hình", time: '10:05', date: "Hôm nay", icon: MousePointer2 },
+    { type: 'setting', name: "Giao diện tối", time: '21:40', date: "Hôm qua", icon: Sliders },
+  ];
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_WIDTH = 256;
+        const MAX_HEIGHT = 256;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+          setAvatar(dataUrl);
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = async () => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      const isDataUrl = avatar.startsWith('data:');
+      const profileUpdates: any = { displayName: name };
+      if (!isDataUrl) {
+        profileUpdates.photoURL = avatar;
+      }
+      await updateProfile(user, profileUpdates);
+      
+      await setDoc(doc(db, "users", user.uid), {
+        displayName: name,
+        photoURL: avatar
+      }, { merge: true });
+      
+      setUserData({ ...userData, displayName: name, photoURL: avatar });
+      onAlert("Thành công", "Đã cập nhật hồ sơ của bạn!");
+    } catch (e: any) {
+      console.error(e);
+      onAlert("Lỗi", "Không thể cập nhật hồ sơ: " + e.message);
+    }
+    setSaving(false);
+  };
+
+  if (!user) {
+    return (
+      <div className="p-4 md:p-8 max-w-2xl mx-auto min-h-[70vh] flex flex-col items-center justify-center space-y-8">
+        <div className="flex flex-col items-center text-center space-y-4">
+          <div className={`w-24 h-24 rounded-full flex items-center justify-center border-4 ${isDark ? "bg-slate-800 border-slate-700" : "bg-slate-100 border-slate-200"}`}>
+            <User className="w-12 h-12 text-slate-400" />
+          </div>
+          <div>
+            <h2 className={`text-3xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Guest</h2>
+            <p className={`mt-4 text-sm leading-relaxed max-w-md ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+              Đăng nhập vào tài khoản VPlay để tận hưởng trải nghiệm cá nhân hóa tốt nhất: lưu lại các kênh yêu thích, đồng bộ lịch sử xem trên mọi thiết bị, và nhận được các đề xuất nội dung phù hợp nhất với sở thích của bạn.
+            </p>
+          </div>
+          <button 
+            onClick={onLogin}
+            className={`px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold transition-all shadow-lg shadow-blue-600/20 active:scale-95 ${
+              liquidGlass ? "rounded-2xl" : "rounded-lg"
+            }`}
+          >
+            Đăng nhập ngay
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-8">
+      <div className="flex flex-col md:flex-row items-center gap-6">
+        <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+          {avatar ? (
+            <img src={avatar} alt="Avatar" className="w-24 h-24 rounded-full object-cover border-4 border-blue-500 shadow-xl" referrerPolicy="no-referrer" />
+          ) : (
+            <div className={`w-24 h-24 rounded-full flex items-center justify-center border-4 ${isDark ? "bg-slate-800 border-slate-700" : "bg-slate-100 border-slate-200"}`}>
+              <User className="w-10 h-10 text-slate-400" />
+            </div>
+          )}
+          <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="text-white text-[10px] font-bold uppercase">Đổi ảnh</span>
+          </div>
+          <input type="file" accept="image/*" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
+        </div>
+        
+        <div className="flex-1 text-center md:text-left space-y-4">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-wider opacity-50">Tên hiển thị</label>
+            <div className="flex gap-2">
+              <input 
+                value={name} 
+                onChange={e => setName(e.target.value)} 
+                className={`flex-1 px-4 py-2 border focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  liquidGlass ? "rounded-xl" : "rounded-lg"
+                } ${isDark ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-200"}`} 
+              />
+              <button 
+                onClick={handleSave} 
+                disabled={saving}
+                className={`px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm disabled:opacity-50 transition-all ${
+                  liquidGlass ? "rounded-xl" : "rounded-lg"
+                }`}
+              >
+                {saving ? "..." : "Lưu"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 mb-2">
+          <History className="w-5 h-5 text-blue-500" />
+          <h3 className={`text-lg font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Hoạt động gần đây</h3>
+        </div>
+        <div className="space-y-3">
+          {activities.map((act, i) => (
+            <div key={i} className={`flex items-center gap-4 p-4 border ${
+              liquidGlass ? "rounded-2xl" : "rounded-xl"
+            } ${isDark ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-sm"}`}>
+              <div className={`p-2.5 ${liquidGlass ? "rounded-xl" : "rounded-lg"} ${isDark ? "bg-blue-500/10" : "bg-blue-50"}`}>
+                <act.icon className="w-5 h-5 text-blue-500" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold">
+                  {act.type === 'view' && `Đã xem ${act.channel}`}
+                  {act.type === 'search' && `Đã tìm kiếm: "${act.query}"`}
+                  {act.type === 'tab' && `Đã chuyển tab: ${act.name}`}
+                  {act.type === 'setting' && `Đã thay đổi cài đặt: ${act.name}`}
+                </p>
+                <div className="flex items-center gap-2 mt-1 opacity-50 text-[10px] font-bold">
+                  <Clock className="w-3 h-3" />
+                  <span>{act.time} • {act.date}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <button 
+        onClick={() => signOut(auth)}
+        className={`w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all border ${isDark ? "bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/20" : "bg-red-50 border-red-100 text-red-600 hover:bg-red-100"}`}
+      >
+        <LogOut className="w-5 h-5" />
+        Đăng xuất
+      </button>
+    </div>
+  );
+}
+
+function SettingsContent({ isDark, setIsDark, isSidebar, isDev, setIsDev, liquidGlass, setLiquidGlass }: { 
+  isDark: boolean, 
+  setIsDark: (val: boolean) => void, 
+  isSidebar?: boolean, 
+  isDev: boolean, 
+  setIsDev: (val: boolean) => void,
+  liquidGlass: boolean,
+  setLiquidGlass: (val: boolean) => void
+}) {
+  const [showDevPrompt, setShowDevPrompt] = useState(false);
+  const [devPass, setDevPass] = useState("");
+  const [devError, setDevError] = useState(false);
+
+  const handleDevToggle = () => {
+    if (isDev) {
+      setIsDev(false);
+    } else {
+      setShowDevPrompt(true);
+    }
+  };
+
+  const verifyDev = (e: FormEvent) => {
+    e.preventDefault();
+    if (devPass === "devunlock") {
+      setIsDev(true);
+      setShowDevPrompt(false);
+      setDevPass("");
+      setDevError(false);
+    } else {
+      setDevError(true);
+      setDevPass("");
+    }
+  };
+
+  return (
+    <div className={`${isSidebar ? "space-y-8" : "p-4 md:p-8 max-w-3xl mx-auto space-y-8"}`}>
+      {!isSidebar && <h2 className={`text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Cài đặt</h2>}
+      
+      {/* Developer Mode Prompt */}
+      <LiquidModal
+        isOpen={showDevPrompt}
+        onClose={() => { setShowDevPrompt(false); setDevPass(""); setDevError(false); }}
+        isDark={isDark}
+        title="Chế độ nhà phát triển"
+        description="Kích hoạt tính năng nhà phát triển để truy cập vào các quyền đặc biệt. Bạn cần phải có mật khẩu dành cho nhà phát triển được chia sẻ bởi Chủ Thớt để kích hoạt"
+        liquidGlass={liquidGlass}
+      >
+        <form onSubmit={verifyDev} className="space-y-4 text-left">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-wider opacity-50 ml-4 text-slate-900">Mật khẩu</label>
+            <input 
+              autoFocus
+              type="password" 
+              value={devPass} 
+              onChange={e => setDevPass(e.target.value)}
+              className={`w-full px-5 py-3 rounded-3xl border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ${
+                devError 
+                  ? "border-red-500 bg-red-500/5" 
+                  : "bg-black/5 border-black/5 text-slate-900 placeholder-slate-400"
+              }`}
+              placeholder="••••••••"
+            />
+            {devError && <p className="text-red-500 text-[10px] mt-2 font-bold text-center">Mật khẩu không chính xác!</p>}
+          </div>
+          
+          <div className="flex flex-col gap-3 pt-2">
+            <button 
+              type="submit"
+              className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-[32px] font-bold transition-all shadow-lg shadow-blue-600/20 active:scale-95"
+            >
+              Xác nhận
+            </button>
+            <button 
+              type="button"
+              onClick={() => { setShowDevPrompt(false); setDevPass(""); setDevError(false); }}
+              className="w-full py-3 rounded-3xl font-bold transition-all bg-black/5 text-slate-500 hover:text-slate-900"
+            >
+              Hủy
+            </button>
+          </div>
+        </form>
+      </LiquidModal>
+
+      {/* Theme Toggle */}
+      <div className={`p-6 rounded-xl border ${isDark ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white"}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {isDark ? <Moon className="h-6 w-6 text-yellow-400" /> : <Sun className="h-6 w-6 text-orange-500" />}
+            <div>
+              <p className={`font-medium ${isDark ? "text-white" : "text-slate-900"}`}>Chế độ giao diện</p>
+              <p className="text-sm text-slate-500">{isDark ? "Tối" : "Sáng"}</p>
+            </div>
+          </div>
+          <button 
+            onClick={() => setIsDark(!isDark)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isDark ? "bg-blue-600" : "bg-slate-300"}`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isDark ? "translate-x-6" : "translate-x-1"}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Developer Mode Toggle */}
+      <div className={`p-6 rounded-xl border ${isDark ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white"}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Terminal className={`h-6 w-6 ${isDev ? "text-blue-400" : "text-slate-400"}`} />
+            <div>
+              <p className={`font-medium ${isDark ? "text-white" : "text-slate-900"}`}>Chế độ Developer</p>
+              <p className="text-sm text-slate-500">{isDev ? "Đã kích hoạt" : "Đã tắt"}</p>
+            </div>
+          </div>
+          <button 
+            onClick={handleDevToggle}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isDev ? "bg-blue-600" : "bg-slate-300"}`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isDev ? "translate-x-6" : "translate-x-1"}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Liquid Glass Toggle */}
+      <div className={`p-6 rounded-xl border ${isDark ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white"}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Layers className={`h-6 w-6 ${liquidGlass ? "text-blue-400" : "text-slate-400"}`} />
+            <div>
+              <p className={`font-medium ${isDark ? "text-white" : "text-slate-900"}`}>Giao diện Liquid Glass</p>
+              <p className="text-xs text-slate-500 max-w-[200px] md:max-w-xs">Tuỳ chọn giao diện Liquid Glass như trên phiên bản iOS 26. Khuyến khích tắt tính năng này nếu như bạn đang dùng thiết bị hiệu năng yếu</p>
+            </div>
+          </div>
+          <button 
+            onClick={() => setLiquidGlass(!liquidGlass)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${liquidGlass ? "bg-blue-600" : "bg-slate-300"}`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${liquidGlass ? "translate-x-6" : "translate-x-1"}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Feedback Section */}
+      <div className={`p-6 rounded-xl border ${isDark ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white"}`}>
+        <h3 className={`text-lg font-semibold mb-4 ${isDark ? "text-white" : "text-slate-900"}`}>Góp ý & Phản hồi</h3>
+        <p className={`text-sm mb-4 ${isDark ? "text-slate-400" : "text-slate-600"}`}>Chúng tôi luôn lắng nghe ý kiến của bạn để hoàn thiện website hơn.</p>
+        <div className="space-y-4">
+          <textarea 
+            placeholder="Nhập ý kiến của bạn tại đây..."
+            className={`w-full p-4 rounded-xl border focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px] ${isDark ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"}`}
+          />
+          <button className="px-6 py-2.5 bg-blue-500 text-white font-medium rounded-lg hover:bg-blue-600 transition-colors">
+            Gửi phản hồi
+          </button>
+        </div>
+      </div>
+
+      {/* Info Content */}
+      <div className={`space-y-6 p-6 rounded-xl border leading-relaxed ${isDark ? "border-slate-800 bg-slate-900/50 text-slate-300" : "border-slate-200 bg-white text-slate-700"}`}>
+        <div className="space-y-2">
+          <h3 className={`text-xl font-semibold ${isDark ? "text-white" : "text-slate-900"}`}>Vplay by OTA System</h3>
+          <p>Vận hành hoạt động từ ngày 25/6/2025</p>
+          <p>Chuyển sang giao diện mới từ ngày 10/4/2026</p>
+        </div>
+
+        <div className="space-y-2">
+          <h3 className={`text-lg font-semibold ${isDark ? "text-white" : "text-slate-900"}`}>Lịch sử các phiên bản:</h3>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>Phiên bản v1.0 (website cũ - 25/6/2025)</li>
+            <li>Phiên bản v1.1 (website mới - 10/4/2026)</li>
+          </ul>
+        </div>
+
+        <div className="space-y-2">
+          <h3 className={`text-lg font-semibold ${isDark ? "text-white" : "text-slate-900"}`}>Một số kênh đang sửa chữa:</h3>
+          <p>Hải Phòng, Hải Phòng 3, Sơn La, Ninh Bình, Bắc Ninh, Hưng Yên, Khánh Hoà 1, Quảng Ngãi 2</p>
+          <p className="italic">Các kênh được nêu trên sẽ được sửa chữa ở các phiên bản sau!</p>
+        </div>
+
+        <div className={`space-y-2 pt-4 border-t ${isDark ? "border-slate-800" : "border-slate-200"}`}>
+          <h3 className={`text-lg font-semibold ${isDark ? "text-white" : "text-slate-900"}`}>Ủng hộ website:</h3>
+          <ul className="space-y-2">
+            <li><a href="https://www.youtube.com/@otaonefr253" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">https://www.youtube.com/@otaonefr253</a></li>
+            <li><a href="https://www.youtube.com/@otatwofr253" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">https://www.youtube.com/@otatwofr253</a></li>
+            <li><a href="https://www.youtube.com/@otathreefr253" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">https://www.youtube.com/@otathreefr253</a></li>
+            <li><a href="https://www.youtube.com/@otafourfr253" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">https://www.youtube.com/@otafourfr253</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AuthModal({ isOpen, onClose, isDark, liquidGlass }: { isOpen: boolean, onClose: () => void, isDark: boolean, liquidGlass: boolean }) {
+  const [isLogin, setIsLogin] = useState(true);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    setLoading(true);
+    try {
+      const email = username.includes('@') ? username : `${username}@vplay.local`;
+      
+      if (isForgotPassword) {
+        await sendPasswordResetEmail(auth, email);
+        setSuccess("Yêu cầu đặt lại mật khẩu đã được gửi đến email của bạn.");
+      } else if (isLogin) {
+        await signInWithEmailAndPassword(auth, email, password);
+        onClose();
+      } else {
+        if (password.length < 6) {
+          setError("Mật khẩu phải có ít nhất 6 ký tự.");
+          return;
+        }
+        const userCred = await createUserWithEmailAndPassword(auth, email, password);
+        await updateProfile(userCred.user, { displayName: username.split('@')[0] });
+        onClose();
+      }
+    } catch (err: any) {
+      console.error("Auth Error:", err);
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+        setError("Tên đăng nhập hoặc mật khẩu không chính xác.");
+      } else if (err.code === 'auth/email-already-in-use') {
+        setError("Tên đăng nhập hoặc email này đã được sử dụng.");
+      } else if (err.code === 'auth/invalid-email') {
+        setError("Định dạng email không hợp lệ.");
+      } else if (err.code === 'auth/weak-password') {
+        setError("Mật khẩu quá yếu.");
+      } else {
+        setError("Đã có lỗi xảy ra. Vui lòng thử lại sau.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getTitle = () => {
+    if (isForgotPassword) return "Quên mật khẩu";
+    return isLogin ? "Đăng nhập" : "Đăng ký";
+  };
+
+  const getDescription = () => {
+    if (isForgotPassword) return "Thay đổi ngôn ngữ giao diện tuỳ ý";
+    return "Tận hưởng và trải nghiệm đầy đủ các tính năng của Vplay ngay hôm nay!";
+  };
+
+  return (
+    <LiquidModal 
+      isOpen={isOpen} 
+      onClose={onClose} 
+      isDark={isDark} 
+      title={getTitle()}
+      description={getDescription()}
+      liquidGlass={liquidGlass}
+    >
+      <form onSubmit={handleSubmit} className="space-y-4 text-left">
+        {error && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl text-xs font-medium text-center"
+          >
+            {error}
+          </motion.div>
+        )}
+        {success && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-3 bg-green-500/10 border border-green-500/20 text-green-600 rounded-2xl text-xs font-medium text-center"
+          >
+            {success}
+          </motion.div>
+        )}
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold uppercase tracking-wider opacity-50 ml-4 text-slate-900">Tên đăng nhập</label>
+          <input 
+            required 
+            value={username} 
+            onChange={e => setUsername(e.target.value)} 
+            className="w-full px-5 py-3 rounded-3xl border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all bg-black/5 border-black/5 text-slate-900 placeholder-slate-400" 
+            placeholder="Nhập tên đăng nhập..." 
+          />
+        </div>
+        {!isForgotPassword && (
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-wider opacity-50 ml-4 text-slate-900">Mật khẩu</label>
+            <input 
+              required 
+              type="password" 
+              value={password} 
+              onChange={e => setPassword(e.target.value)} 
+              className="w-full px-5 py-3 rounded-3xl border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all bg-black/5 border-black/5 text-slate-900 placeholder-slate-400" 
+              placeholder="Nhập mật khẩu..." 
+            />
+          </div>
+        )}
+        
+        {isLogin && !isForgotPassword && (
+          <div className="text-right px-4">
+            <button 
+              type="button" 
+              onClick={() => setIsForgotPassword(true)}
+              className="text-[11px] font-bold text-blue-500 hover:underline"
+            >
+              Quên mật khẩu?
+            </button>
+          </div>
+        )}
+
+        <button 
+          type="submit" 
+          disabled={loading} 
+          className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-[32px] font-bold transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50 active:scale-95 mt-2"
+        >
+          {loading ? "..." : (isForgotPassword ? "Xác nhận" : (isLogin ? "Đăng nhập" : "Đăng ký"))}
+        </button>
+      </form>
+      <div className="mt-6 flex flex-col gap-3">
+        {isForgotPassword ? (
+          <button type="button" onClick={() => setIsForgotPassword(false)} className="text-blue-500 text-xs font-bold hover:underline">
+            Quay lại đăng nhập
+          </button>
+        ) : (
+          <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-blue-500 text-xs font-bold hover:underline">
+            {isLogin ? "Chưa có tài khoản? Đăng ký ngay" : "Đã có tài khoản? Đăng nhập"}
+          </button>
+        )}
+        <button 
+          onClick={onClose} 
+          className="w-full py-3 rounded-3xl font-bold transition-all bg-black/5 text-slate-500 hover:text-slate-900"
+        >
+          Tiếp tục với tài khoản đăng xuất
+        </button>
+      </div>
+    </LiquidModal>
+  );
+}
+
+function SearchBar({ isDark, query, setQuery, onClose }: { isDark: boolean, query: string, setQuery: (q: string) => void, onClose: () => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [isListening, setIsListening] = useState(false);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const startVoiceSearch = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Không thể nhận diện giọng nói");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'vi-VN';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setQuery(transcript);
+    };
+
+    recognition.start();
+  };
+
+  return (
+    <div className="flex items-center gap-4 px-6 py-2 h-16 w-full max-w-4xl">
+      <img 
+        src="https://static.wikia.nocookie.net/ftv/images/6/63/Search_uci.png/revision/latest?cb=20260411084053&path-prefix=vi" 
+        alt="Search" 
+        className="h-7 w-7 object-contain" 
+        referrerPolicy="no-referrer" 
+      />
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder="Tìm kiếm kênh chương trình"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        className={`flex-1 bg-transparent border-none outline-none text-lg font-medium text-black placeholder-black/40`}
+      />
+      <div className="flex items-center gap-4">
+        <button 
+          onClick={startVoiceSearch}
+          className={`p-2 rounded-full transition-all ${isListening ? "bg-red-500 text-white animate-pulse" : "text-black hover:opacity-70"}`}
+          title="Đang nghe..."
+        >
+          <Mic className="h-7 w-7" />
+        </button>
+        <button 
+          onClick={onClose}
+          className={`p-2 rounded-full transition-all hover:scale-110 active:scale-95 text-black hover:opacity-70`}
+        >
+          <X className="h-6 w-6" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ProtectedContent({ children, user, onLogin, isDark, isDev, liquidGlass }: { children: ReactNode, user: any, onLogin: () => void, isDark: boolean, isDev?: boolean, liquidGlass: boolean }) {
+  if (!user && !isDev) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center space-y-6">
+        <motion.div 
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className={`p-6 ${liquidGlass ? "rounded-full" : "rounded-xl"} ${isDark ? "bg-blue-500/10" : "bg-blue-50"}`}
+        >
+          <Lock className={`h-12 w-12 ${isDark ? "text-blue-400" : "text-blue-600"}`} />
+        </motion.div>
+        <div className="space-y-2">
+          <h2 className={`text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Đăng nhập</h2>
+          <p className={`${isDark ? "text-slate-400" : "text-slate-500"} max-w-md mx-auto`}>
+            Tận hưởng và trải nghiệm đầy đủ các tính năng của Vplay ngay hôm nay!
+          </p>
+        </div>
+        <button
+          onClick={onLogin}
+          className={`px-8 py-3 font-bold transition-all hover:scale-105 active:scale-95 ${
+            liquidGlass ? "rounded-2xl" : "rounded-lg"
+          } ${
+            isDark 
+              ? "bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_20px_rgba(37,99,235,0.4)]" 
+              : "bg-blue-500 hover:bg-blue-600 text-white shadow-[0_0_20px_rgba(59,130,246,0.3)]"
+          }`}
+        >
+          Đăng nhập
+        </button>
+      </div>
+    );
+  }
+  return <>{children}</>;
+}
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState("Trang chủ");
+  const [lastTab, setLastTab] = useState("Trang chủ");
+  const [prevTab, setPrevTab] = useState("Trang chủ");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [liquidGlass, setLiquidGlass] = useState(true);
+  const [activeChannel, setActiveChannel] = useState(channels[0]);
+  const [sortOrder, setSortOrder] = useState<"default" | "az" | "za">("default");
+
+  useEffect(() => {
+    if (activeTab !== "Cài đặt") {
+      setLastTab(activeTab);
+    }
+    if (activeTab !== "Cài đặt" && activeTab !== "Tìm kiếm") {
+      setPrevTab(activeTab);
+    }
+  }, [activeTab]);
+  const [isDark, setIsDark] = useState(true); // Default to dark for better gradient look
+  const [searchQuery, setSearchQuery] = useState("");
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [userData, setUserData] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isDev, setIsDev] = useState(() => {
+    return localStorage.getItem("vplay_dev_mode") === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("vplay_dev_mode", isDev.toString());
+  }, [isDev]);
+
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    const saved = localStorage.getItem("vplay_favorites");
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [customAlert, setCustomAlert] = useState<{ title: string, message: string } | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem("vplay_favorites", JSON.stringify(favorites));
+  }, [favorites]);
+
+  const toggleFavorite = (ch: typeof channels[0]) => {
+    setFavorites(prev => 
+      prev.includes(ch.name) 
+        ? prev.filter(name => name !== ch.name) 
+        : [...prev, ch.name]
+    );
+  };
+
+  const handleChannelSelect = (ch: typeof channels[0]) => {
+    if (!user && !isDev) {
+      setShowAuthModal(true);
+      return;
+    }
+    setActiveChannel(ch);
+    setActiveTab("Truyền hình");
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        try {
+          const userRef = doc(db, "users", currentUser.uid);
+          const userSnap = await getDoc(userRef);
+          
+          let role = "user";
+          if (userSnap.exists()) {
+            role = userSnap.data().role;
+            setUserData(userSnap.data());
+          } else {
+            // Check if it's the default admin
+            if (currentUser.email === "nguyentrungthu1610@gmail.com") {
+              role = "admin";
+            }
+            const newUserData: any = {
+              uid: currentUser.uid,
+              email: currentUser.email,
+              role: role,
+              createdAt: serverTimestamp()
+            };
+            if (currentUser.displayName) newUserData.displayName = currentUser.displayName;
+            if (currentUser.photoURL) newUserData.photoURL = currentUser.photoURL;
+            
+            await setDoc(userRef, newUserData);
+            setUserData(newUserData);
+          }
+          setIsAdmin(role === "admin");
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+          setIsAdmin(false);
+          setUserData(null);
+        }
+      } else {
+        setIsAdmin(false);
+        setUserData(null);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogin = () => {
+    setShowAuthModal(true);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setActiveTab("Trang chủ");
+    } catch (error) {
+      console.error("Logout failed", error);
+    }
+  };
+
+  const tabs = [...baseTabs];
+  if (isAdmin || isDev) {
+    tabs.push({ name: "Quản trị", icon: Shield, id: "Quản trị" });
+  }
+
+  const displayTab = activeTab === "Cài đặt" ? lastTab : activeTab;
+
+  return (
+    <div className={`${
+      liquidGlass 
+        ? (isDark ? "bg-gradient-to-br from-black via-slate-950 to-black text-white" : "bg-gradient-to-br from-blue-100 via-blue-50 to-white text-slate-950")
+        : (isDark ? "bg-slate-950 text-white" : "bg-slate-50 text-slate-950")
+    } min-h-screen flex flex-col transition-colors duration-500`}>
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} isDark={isDark} liquidGlass={liquidGlass} />
+      
+      <AnimatePresence>
+        {isSearchOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsSearchOpen(false)}
+            className={`fixed inset-0 z-[45] bg-black/20 ${liquidGlass ? "backdrop-blur-[2px]" : ""}`}
+          />
+        )}
+      </AnimatePresence>
+
+      <LiquidModal 
+        isOpen={!!customAlert} 
+        onClose={() => setCustomAlert(null)} 
+        isDark={isDark}
+        title={customAlert?.title}
+        description={customAlert?.message}
+        liquidGlass={liquidGlass}
+      >
+        <button 
+          onClick={() => setCustomAlert(null)}
+          className="w-full py-4 bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 rounded-3xl font-bold transition-all active:scale-95"
+        >
+          Xác nhận
+        </button>
+      </LiquidModal>
+
+      <AnimatePresence>
+        {activeTab === "Cài đặt" && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setActiveTab(lastTab)}
+              className="fixed inset-0 z-[55] bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className={`fixed top-0 right-0 h-full w-full md:w-[400px] z-[60] border-l shadow-2xl overflow-y-auto ${isDark ? "bg-slate-900/95 border-white/10" : "bg-white/95 border-black/5"}`}
+            >
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-8">
+                  <h2 className={`text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Cài đặt</h2>
+                  <button 
+                    onClick={() => setActiveTab(lastTab)}
+                    className={`p-2 rounded-full transition-colors ${isDark ? "hover:bg-white/10 text-slate-400" : "hover:bg-black/5 text-slate-500"}`}
+                  >
+                    <X className="h-6 w-6" />
+                  </button>
+                </div>
+                <SettingsContent 
+                  isDark={isDark} 
+                  setIsDark={setIsDark} 
+                  isSidebar 
+                  isDev={isDev} 
+                  setIsDev={setIsDev} 
+                  liquidGlass={liquidGlass}
+                  setLiquidGlass={setLiquidGlass}
+                />
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <div className="flex-1 overflow-y-auto pb-32 flex flex-col">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={displayTab}
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.98 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="h-full flex flex-col"
+          >
+            {displayTab === "Trang chủ" && (
+              <HomeContent 
+                setActiveTab={setActiveTab} 
+                setActiveChannel={handleChannelSelect} 
+                isDark={isDark} 
+                favorites={favorites} 
+                toggleFavorite={toggleFavorite} 
+                liquidGlass={liquidGlass}
+              />
+            )}
+            {displayTab === "Truyền hình" && (
+              <TVContent 
+                active={activeChannel} 
+                setActive={handleChannelSelect} 
+                isDark={isDark} 
+                favorites={favorites} 
+                toggleFavorite={toggleFavorite} 
+                user={user}
+                onLogin={handleLogin}
+                isDev={isDev}
+                liquidGlass={liquidGlass}
+                sortOrder={sortOrder}
+                setSortOrder={setSortOrder}
+              />
+            )}
+            {displayTab === "Phát thanh" && (
+              <div className={`flex items-center justify-center h-full gap-2 text-lg font-medium ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                <CheckCircle2 className="h-6 w-6 text-green-500" />
+                Đang phát triển
+              </div>
+            )}
+            {displayTab === "Hồ sơ" && !isAdmin && (
+              <ProfileContent 
+                isDark={isDark} 
+                user={user} 
+                userData={userData} 
+                setUserData={setUserData} 
+                onAlert={(title, msg) => setCustomAlert({ title, message: msg })}
+                onLogin={handleLogin}
+                liquidGlass={liquidGlass}
+              />
+            )}
+            {displayTab === "Quản trị" && (isAdmin || isDev) && <AdminContent isDark={isDark} liquidGlass={liquidGlass} />}
+            {displayTab !== "Trang chủ" && displayTab !== "Truyền hình" && displayTab !== "Phát thanh" && displayTab !== "Quản trị" && displayTab !== "Hồ sơ" && (
+              <div className={`flex items-center justify-center h-full ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                {displayTab} - Nội dung
+              </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+      
+      <div className={`fixed ${liquidGlass ? "bottom-6 left-0 right-0 px-4" : "bottom-0 left-0 right-0 px-0"} z-50 flex justify-center pointer-events-none`}>
+        <div className={`flex items-center gap-3 pointer-events-auto ${liquidGlass ? "" : "w-full"}`}>
+          <AnimatePresence mode="popLayout">
+            {!isSearchOpen && (
+              <motion.nav 
+                key="nav-bar"
+                layout
+                initial={{ x: -20, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: -20, opacity: 0 }}
+                className={`flex items-center gap-2 p-2 transition-all duration-500 overflow-hidden ${
+                  liquidGlass 
+                    ? "rounded-full border shadow-[0_20px_50px_rgba(0,0,0,0.3)] backdrop-blur-3xl max-w-full" 
+                    : "rounded-none border-t w-full justify-around backdrop-blur-none"
+                } bg-white/60 border-white/40 shadow-2xl`}>
+                <div className={`flex items-center ${liquidGlass ? "gap-1" : "gap-0 w-full justify-around"}`}>
+                  {tabs.map((tab) => {
+                    const Icon = tab.icon;
+                    const isActive = activeTab === (tab.id || tab.name);
+                    const userAvatar = ((tab.id === "Hồ sơ" || tab.name === "Hồ sơ") && user) ? (userData?.photoURL || user.photoURL) : null;
+                    
+                    return (
+                      <button
+                        key={tab.name}
+                        onClick={() => setActiveTab(tab.name)}
+                        className={`relative flex flex-col items-center justify-center px-4 py-2 transition-all duration-300 group ${
+                          liquidGlass ? "rounded-2xl" : "rounded-none flex-1"
+                        } ${
+                          isActive 
+                            ? "text-blue-600" 
+                            : "text-black hover:opacity-70"
+                        }`}
+                      >
+                        {isActive && liquidGlass && (
+                          <motion.div
+                            layoutId="activeTabPill"
+                            className={`absolute inset-0 rounded-full z-0 shadow-sm ${
+                              isDark ? "bg-white/10" : "bg-white shadow-md"
+                            }`}
+                            transition={{ type: "spring", bounce: 0.5, duration: 0.6 }}
+                          />
+                        )}
+                        <motion.div
+                          whileTap={{ scale: 0.7, rotate: isActive ? 0 : 15 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 17 }}
+                          className={`z-10 ${tab.name === "Trang chủ" ? "translate-y-[1.5px]" : ""}`}
+                        >
+                          {userAvatar ? (
+                            <img 
+                              src={userAvatar} 
+                              alt="Avatar" 
+                              className={`h-7 w-7 rounded-full object-cover transition-transform duration-300 border ${isActive ? "scale-110 border-blue-500" : "group-hover:scale-110 border-transparent"}`} 
+                              referrerPolicy="no-referrer" 
+                            />
+                          ) : (
+                            <Icon className={`h-7 w-7 transition-transform duration-300 ${isActive ? "scale-110 fill-current" : "group-hover:scale-110"}`} />
+                          )}
+                        </motion.div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* AUTH / LOGOUT */}
+                {liquidGlass && (
+                  <div className="px-3 border-l border-slate-500/20 ml-1 flex items-center">
+                    {user ? (
+                      <button onClick={handleLogout} className={`p-2 rounded-xl transition-colors ${isDark ? "bg-slate-800 text-red-400 hover:bg-red-500/20" : "bg-slate-100 text-red-500 hover:bg-red-500/10"}`} title="Đăng xuất">
+                        <LogOut className="h-5 w-5" />
+                      </button>
+                    ) : (
+                      <div className="relative group/login">
+                        <button 
+                          onClick={handleLogin} 
+                          className={`p-3 rounded-full transition-all hover:scale-110 active:scale-90 ${isDark ? "bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]" : "bg-blue-500 hover:bg-blue-600 text-white shadow-[0_0_15px_rgba(59,130,246,0.3)]"}`}
+                        >
+                          <LogIn className="h-6 w-6" />
+                        </button>
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 px-4 py-2 bg-slate-900 text-white text-[11px] font-bold rounded-xl opacity-0 group-hover/login:opacity-100 transition-all duration-300 pointer-events-none whitespace-nowrap shadow-2xl border border-white/10 z-[100] translate-y-2 group-hover/login:translate-y-0">
+                          Đăng nhập để trải nghiệm tốt hơn!
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900"></div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </motion.nav>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence mode="popLayout">
+            {isSearchOpen ? (
+              <div className="relative flex flex-col items-center">
+                <SearchPopup 
+                  isDark={isDark} 
+                  searchQuery={searchQuery} 
+                  setActiveChannel={handleChannelSelect} 
+                  onClose={() => setIsSearchOpen(false)} 
+                  favorites={favorites}
+                  liquidGlass={liquidGlass}
+                  setActiveTab={setActiveTab}
+                  setIsDark={setIsDark}
+                  setLiquidGlass={setLiquidGlass}
+                  onLogin={handleLogin}
+                  onLogout={handleLogout}
+                  setSortOrder={setSortOrder}
+                />
+                <motion.div 
+                  key="search-expanded"
+                  layoutId="search-button"
+                  initial={{ width: 72, height: 72, opacity: 0, borderRadius: "50%" }}
+                  animate={{ width: "auto", height: 64, opacity: 1, borderRadius: liquidGlass ? "32px" : "12px" }}
+                  exit={{ width: 72, height: 72, opacity: 0, borderRadius: "50%" }}
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  className={`p-1.5 flex items-center border shadow-[0_20px_50px_rgba(0,0,0,0.3)] overflow-hidden bg-white/60 border-white/40 shadow-2xl ${
+                    liquidGlass ? "backdrop-blur-3xl" : "backdrop-blur-none"
+                  }`}
+                >
+                  <SearchBar 
+                    isDark={isDark} 
+                    query={searchQuery} 
+                    setQuery={setSearchQuery} 
+                    onClose={() => setIsSearchOpen(false)} 
+                  />
+                </motion.div>
+              </div>
+            ) : (
+              liquidGlass && (
+                <motion.button
+                  key="search-circle"
+                  layoutId="search-button"
+                  onClick={() => setIsSearchOpen(true)}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  initial={{ borderRadius: "50%" }}
+                  animate={{ borderRadius: "50%" }}
+                  className={`w-[72px] h-[72px] flex items-center justify-center rounded-full border shadow-[0_20px_50px_rgba(0,0,0,0.3)] backdrop-blur-3xl transition-all duration-500 bg-white/60 border-white/40 shadow-2xl text-black hover:opacity-70`}
+                >
+                  <img 
+                    src="https://static.wikia.nocookie.net/ftv/images/6/63/Search_uci.png/revision/latest?cb=20260411084053&path-prefix=vi" 
+                    alt="Search" 
+                    className="h-8 w-8 object-contain" 
+                    referrerPolicy="no-referrer" 
+                  />
+                </motion.button>
+              )
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </div>
+  );
+}
