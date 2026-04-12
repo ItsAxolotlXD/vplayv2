@@ -104,4 +104,11 @@ export const channels: Channel[] = [
   // Thiết yếu
   { category: "Thiết yếu", name: "Truyền hình Công an Nhân dân (ANTV)", logo: "https://img-zlr1.tv360.vn/image1/2020_09_23/1600822516608/b33963dc0df8_640_360.png", stream: "https://live.fptplay53.net/fnxhd2/anninhtv_vhls.smil/chunklist_b5000000.m3u8" },
   { category: "Thiết yếu", name: "Truyền hình Quốc phòng Việt Nam (QPVN)", logo: "https://static.wikia.nocookie.net/logos/images/5/5d/QPVN.png/revision/latest/scale-to-width-down/1000?cb=20220827083916&path-prefix=vi", stream: "https://live.fptplay53.net/fnxhd2/quocphongvnhd_vhls.smil/chunklist_b5000000.m3u8" },
+
+  // Phát thanh
+  { category: "Phát thanh", name: "VOV1", logo: "https://static.wikia.nocookie.net/logos/images/0/0d/VOV1_logo_2017.png/revision/latest?cb=20220311024316&path-prefix=vi", stream: "https://vov.vn/live/vov1.m3u8" },
+  { category: "Phát thanh", name: "VOV2", logo: "https://static.wikia.nocookie.net/logos/images/a/a4/VOV2_logo_2017.png/revision/latest?cb=20220311024317&path-prefix=vi", stream: "https://vov.vn/live/vov2.m3u8" },
+  { category: "Phát thanh", name: "VOV3", logo: "https://static.wikia.nocookie.net/logos/images/a/a2/VOV3_logo_2017.png/revision/latest?cb=20220311024318&path-prefix=vi", stream: "https://vov.vn/live/vov3.m3u8" },
+  { category: "Phát thanh", name: "VOV Giao thông Hà Nội", logo: "https://static.wikia.nocookie.net/logos/images/5/5e/VOV_Giao_th%C3%B4ng_logo_2017.png/revision/latest?cb=20220311024323&path-prefix=vi", stream: "https://vov.vn/live/vovgt-hn.m3u8" },
+  { category: "Phát thanh", name: "VOV Giao thông TP.HCM", logo: "https://static.wikia.nocookie.net/logos/images/5/5e/VOV_Giao_th%C3%B4ng_logo_2017.png/revision/latest?cb=20220311024323&path-prefix=vi", stream: "https://vov.vn/live/vovgt-hcm.m3u8" },
 ];
