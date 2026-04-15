@@ -47,11 +47,6 @@ const SplashScreen = ({ isDark }: { isDark: boolean }) => (
       className="flex flex-col items-center space-y-12"
     >
       <div className="relative">
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-          className="absolute -inset-12 rounded-full border-4 border-dashed border-purple-500/40"
-        />
         <motion.img 
           initial={{ scale: 0.9 }}
           animate={{ scale: [0.9, 1.05, 0.9] }}
@@ -1138,7 +1133,7 @@ function AdminContent({ isDark, liquidGlass }: { isDark: boolean, liquidGlass: b
   if (loading) return <div className="p-8 text-center">Đang tải...</div>;
   if (error) return <div className="p-8 text-center text-red-500">Lỗi: {error}</div>;
 
-  const filteredUsers = users.filter(u => u.email !== "nguyentrungthu1610@gmail.com");
+  const filteredUsers = users.filter(u => u.email !== "sonhuyc2kl@gmail.com");
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">
@@ -1560,7 +1555,7 @@ function AuthModal({ isOpen, onClose, isDark, liquidGlass }: { isOpen: boolean, 
 
     setLoading(true);
     try {
-      const email = username.includes('@') ? username : `${username}@vplay.local`;
+      const email = username.includes('@') ? username : `${username}@vplay.vn`;
       
       if (isForgotPassword) {
         await sendPasswordResetEmail(auth, email);
@@ -1908,13 +1903,14 @@ function App() {
   }, [activeTab]);
   const [isDark, setIsDark] = useState(true); // Default to dark for better gradient look
   const [searchQuery, setSearchQuery] = useState("");
+  const [showDevSettings, setShowDevSettings] = useState(false);
   const [showDevPrompt, setShowDevPrompt] = useState(false);
   const [devPass, setDevPass] = useState("");
   const [devError, setDevError] = useState(false);
 
   useEffect(() => {
     if (searchQuery.toLowerCase() === "devmode") {
-      setShowDevPrompt(true);
+      setShowDevSettings(true);
       setSearchQuery("");
       setIsSearchOpen(false);
     }
@@ -1992,7 +1988,7 @@ function App() {
             setUserData(userSnap.data());
           } else {
             // Check if it's the default admin
-            if (currentUser.email === "nguyentrungthu1610@gmail.com") {
+            if (currentUser.email === "sonhuyc2kl@gmail.com") {
               role = "admin";
             }
             const newUserData: any = {
@@ -2052,6 +2048,42 @@ function App() {
       </AnimatePresence>
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} isDark={isDark} liquidGlass={liquidGlass} />
       
+      {/* Developer Settings Choice */}
+      <LiquidModal
+        isOpen={showDevSettings}
+        onClose={() => setShowDevSettings(false)}
+        isDark={isDark}
+        title="Cài đặt nhà phát triển"
+        description={isDev ? "Bạn đang ở chế độ nhà phát triển. Bạn có muốn tắt nó không?" : "Bạn muốn kích hoạt chế độ nhà phát triển?"}
+        liquidGlass={liquidGlass}
+      >
+        <div className="flex flex-col gap-3">
+          {!isDev ? (
+            <button 
+              onClick={() => { setShowDevSettings(false); setShowDevPrompt(true); }}
+              className="w-full py-4 bg-purple-600 hover:bg-purple-500 text-white rounded-[32px] font-bold transition-all shadow-lg shadow-purple-600/20 active:scale-95"
+            >
+              Kích hoạt (Yêu cầu mật khẩu)
+            </button>
+          ) : (
+            <button 
+              onClick={() => { setIsDev(false); setShowDevSettings(false); }}
+              className="w-full py-4 bg-red-600 hover:bg-red-500 text-white rounded-[32px] font-bold transition-all shadow-lg shadow-red-600/20 active:scale-95"
+            >
+              Hủy kích hoạt
+            </button>
+          )}
+          <button 
+            onClick={() => setShowDevSettings(false)}
+            className={`w-full py-3 rounded-3xl font-bold transition-all ${
+              isDark ? "bg-white/5 text-slate-400 hover:text-white" : "bg-black/5 text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            Đóng
+          </button>
+        </div>
+      </LiquidModal>
+
       {/* Developer Mode Prompt */}
       <LiquidModal
         isOpen={showDevPrompt}
