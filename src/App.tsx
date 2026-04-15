@@ -4,11 +4,11 @@
  */
 
 import { useState, useEffect, useRef, ChangeEvent, FormEvent, ReactNode } from "react";
-import { Search, User, Tv, Calendar, Home, Play, Pause, Radio, Info, Sun, Moon, Maximize, Settings, Volume2, VolumeX, CheckCircle2, Shield, LogOut, LogIn, Heart, X, Lock, Terminal, Zap, Clock, History, MousePointer2, Sliders, ChevronLeft, ChevronRight, Mic, Layers, Filter, Sparkles, Camera, Palette, Layout, MessageSquare } from "lucide-react";
+import { Search, User, Tv, Calendar, Home, Play, Pause, Radio, Info, Sun, Moon, Maximize, Settings, Volume2, VolumeX, CheckCircle2, Shield, LogOut, LogIn, Heart, X, Lock, Terminal, Zap, Clock, History, MousePointer2, Sliders, ChevronLeft, ChevronRight, Mic, Layers, Filter, Sparkles, Camera, Palette, Layout, MessageSquare, Eye, EyeOff, ExternalLink } from "lucide-react";
 import Hls from "hls.js";
 import { motion, AnimatePresence, MotionConfig } from "motion/react";
 import { auth, db } from "./firebase";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail, User as FirebaseUser } from "firebase/auth";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail, User as FirebaseUser, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, getDocs, serverTimestamp, updateDoc, arrayUnion, getDocFromServer } from "firebase/firestore";
 
 import { channels, Channel } from "./channels";
@@ -115,13 +115,17 @@ function LiquidModal({ isOpen, onClose, children, isDark, title, description, li
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.8, opacity: 0, y: 20 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className={`relative w-full max-w-sm overflow-hidden border bg-white/90 border-white/60 text-slate-900 shadow-2xl ${
+            className={`relative w-full max-w-sm overflow-hidden border shadow-2xl ${
+              isDark 
+                ? "bg-slate-900/90 border-white/10 text-white" 
+                : "bg-white/90 border-white/60 text-slate-900"
+            } ${
               liquidGlass ? "rounded-[40px] backdrop-blur-3xl" : "rounded-2xl backdrop-blur-none"
             }`}
           >
             <div className="p-8 text-center">
-              {title && <h3 className="text-2xl font-bold mb-2 text-slate-900">{title}</h3>}
-              {description && <p className="text-black/60 text-sm leading-relaxed mb-6 font-medium">{description}</p>}
+              {title && <h3 className={`text-2xl font-bold mb-2 ${isDark ? "text-white" : "text-slate-900"}`}>{title}</h3>}
+              {description && <p className={`${isDark ? "text-white/60" : "text-black/60"} text-sm leading-relaxed mb-6 font-medium`}>{description}</p>}
               {children}
             </div>
           </motion.div>
@@ -1505,10 +1509,23 @@ function SettingsContent({
           </div>
         </div>
 
-        <div className="mt-6 pt-4 border-t border-white/5">
+        <div className="mt-6 pt-4 border-t border-white/5 space-y-4">
           <p className="text-[10px] leading-relaxed opacity-50 italic">
             * Một số kênh (Hải Phòng, Sơn La, Ninh Bình...) đang được bảo trì và sẽ sớm quay trở lại.
           </p>
+          
+          <div className={`p-3 rounded-xl border ${isDark ? "bg-red-500/5 border-red-500/10" : "bg-red-50 border-red-100"}`}>
+            <p className="text-[10px] font-bold text-red-500 mb-1 uppercase tracking-wider">Firebase Debug</p>
+            <p className="text-[9px] opacity-70 mb-2">Nếu đăng nhập không hoạt động, hãy đảm bảo bạn đã bật "Email/Password" và "Google" trong Firebase Console.</p>
+            <a 
+              href={`https://console.firebase.google.com/project/${auth.app.options.projectId}/authentication/providers`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[9px] font-bold text-purple-500 hover:underline flex items-center gap-1"
+            >
+              Mở Firebase Console <ExternalLink size={8} />
+            </a>
+          </div>
         </div>
       </div>
     </div>
@@ -1520,6 +1537,8 @@ function AuthModal({ isOpen, onClose, isDark, liquidGlass }: { isOpen: boolean, 
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1528,6 +1547,17 @@ function AuthModal({ isOpen, onClose, isDark, liquidGlass }: { isOpen: boolean, 
     e.preventDefault();
     setError("");
     setSuccess("");
+    
+    if (!isForgotPassword && !isLogin && password !== confirmPassword) {
+      setError("Mật khẩu xác nhận không khớp.");
+      return;
+    }
+
+    if (!isForgotPassword && username.length < 3) {
+      setError("Tên đăng nhập phải có ít nhất 3 ký tự.");
+      return;
+    }
+
     setLoading(true);
     try {
       const email = username.includes('@') ? username : `${username}@vplay.local`;
@@ -1541,6 +1571,7 @@ function AuthModal({ isOpen, onClose, isDark, liquidGlass }: { isOpen: boolean, 
       } else {
         if (password.length < 6) {
           setError("Mật khẩu phải có ít nhất 6 ký tự.");
+          setLoading(false);
           return;
         }
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
@@ -1549,16 +1580,21 @@ function AuthModal({ isOpen, onClose, isDark, liquidGlass }: { isOpen: boolean, 
       }
     } catch (err: any) {
       console.error("Auth Error:", err);
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+      const code = err.code;
+      if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
         setError("Tên đăng nhập hoặc mật khẩu không chính xác.");
-      } else if (err.code === 'auth/email-already-in-use') {
+      } else if (code === 'auth/email-already-in-use') {
         setError("Tên đăng nhập hoặc email này đã được sử dụng.");
-      } else if (err.code === 'auth/invalid-email') {
+      } else if (code === 'auth/invalid-email') {
         setError("Định dạng email không hợp lệ.");
-      } else if (err.code === 'auth/weak-password') {
+      } else if (code === 'auth/weak-password') {
         setError("Mật khẩu quá yếu.");
+      } else if (code === 'auth/operation-not-allowed') {
+        setError("Đăng nhập bằng email/mật khẩu chưa được kích hoạt trong hệ thống.");
+      } else if (code === 'auth/too-many-requests') {
+        setError("Tài khoản bị tạm khóa do đăng nhập sai quá nhiều lần. Vui lòng thử lại sau.");
       } else {
-        setError("Đã có lỗi xảy ra. Vui lòng thử lại sau.");
+        setError("Đã có lỗi xảy ra: " + (err.message || "Vui lòng thử lại sau."));
       }
     } finally {
       setLoading(false);
@@ -1571,8 +1607,39 @@ function AuthModal({ isOpen, onClose, isDark, liquidGlass }: { isOpen: boolean, 
   };
 
   const getDescription = () => {
-    if (isForgotPassword) return "Thay đổi ngôn ngữ giao diện tuỳ ý";
+    if (isForgotPassword) return "Nhập email hoặc tên đăng nhập để nhận liên kết đặt lại mật khẩu.";
     return "Tận hưởng và trải nghiệm đầy đủ các tính năng của Vplay ngay hôm nay!";
+  };
+
+  const inputClasses = `w-full px-5 py-3 rounded-3xl border focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all ${
+    isDark 
+      ? "bg-white/5 border-white/10 text-white placeholder-white/30" 
+      : "bg-black/5 border-black/5 text-slate-900 placeholder-slate-400"
+  }`;
+
+  const labelClasses = `text-[10px] font-bold uppercase tracking-wider opacity-50 ml-4 ${
+    isDark ? "text-white" : "text-slate-900"
+  }`;
+
+  const handleGoogleLogin = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      onClose();
+    } catch (err: any) {
+      console.error("Google Auth Error:", err);
+      if (err.code === 'auth/popup-blocked') {
+        setError("Cửa sổ đăng nhập bị chặn. Vui lòng cho phép hiện popup.");
+      } else if (err.code === 'auth/cancelled-popup-request') {
+        // User closed the popup, ignore
+      } else {
+        setError("Lỗi đăng nhập Google: " + (err.message || "Vui lòng thử lại sau."));
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -1584,7 +1651,28 @@ function AuthModal({ isOpen, onClose, isDark, liquidGlass }: { isOpen: boolean, 
       description={getDescription()}
       liquidGlass={liquidGlass}
     >
-      <form onSubmit={handleSubmit} className="space-y-4 text-left">
+      <div className="space-y-4">
+        {/* Google Login Button */}
+        <button 
+          onClick={handleGoogleLogin}
+          disabled={loading}
+          className={`w-full py-3 flex items-center justify-center gap-3 rounded-3xl font-bold transition-all border ${
+            isDark 
+              ? "bg-white/5 border-white/10 text-white hover:bg-white/10" 
+              : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm"
+          }`}
+        >
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
+          Tiếp tục với Google
+        </button>
+
+        <div className="flex items-center gap-4 py-2">
+          <div className={`flex-1 h-[1px] ${isDark ? "bg-white/10" : "bg-slate-200"}`} />
+          <span className="text-[10px] font-bold uppercase opacity-30">Hoặc</span>
+          <div className={`flex-1 h-[1px] ${isDark ? "bg-white/10" : "bg-slate-200"}`} />
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 text-left">
         {error && (
           <motion.div 
             initial={{ opacity: 0, y: -10 }}
@@ -1604,27 +1692,51 @@ function AuthModal({ isOpen, onClose, isDark, liquidGlass }: { isOpen: boolean, 
           </motion.div>
         )}
         <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase tracking-wider opacity-50 ml-4 text-slate-900">Tên đăng nhập</label>
+          <label className={labelClasses}>Tên đăng nhập / Email</label>
           <input 
             required 
             value={username} 
             onChange={e => setUsername(e.target.value)} 
-            className="w-full px-5 py-3 rounded-3xl border focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all bg-black/5 border-black/5 text-slate-900 placeholder-slate-400" 
-            placeholder="Nhập tên đăng nhập..." 
+            className={inputClasses} 
+            placeholder="Nhập tên đăng nhập hoặc email..." 
           />
         </div>
         {!isForgotPassword && (
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase tracking-wider opacity-50 ml-4 text-slate-900">Mật khẩu</label>
-            <input 
-              required 
-              type="password" 
-              value={password} 
-              onChange={e => setPassword(e.target.value)} 
-              className="w-full px-5 py-3 rounded-3xl border focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all bg-black/5 border-black/5 text-slate-900 placeholder-slate-400" 
-              placeholder="Nhập mật khẩu..." 
-            />
-          </div>
+          <>
+            <div className="space-y-1">
+              <label className={labelClasses}>Mật khẩu</label>
+              <div className="relative">
+                <input 
+                  required 
+                  type={showPassword ? "text" : "password"} 
+                  value={password} 
+                  onChange={e => setPassword(e.target.value)} 
+                  className={inputClasses} 
+                  placeholder="Nhập mật khẩu..." 
+                />
+                <button 
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-purple-500 transition-colors"
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+            {!isLogin && (
+              <div className="space-y-1">
+                <label className={labelClasses}>Xác nhận mật khẩu</label>
+                <input 
+                  required 
+                  type={showPassword ? "text" : "password"} 
+                  value={confirmPassword} 
+                  onChange={e => setConfirmPassword(e.target.value)} 
+                  className={inputClasses} 
+                  placeholder="Nhập lại mật khẩu..." 
+                />
+              </div>
+            )}
+          </>
         )}
         
         {isLogin && !isForgotPassword && (
@@ -1659,13 +1771,16 @@ function AuthModal({ isOpen, onClose, isDark, liquidGlass }: { isOpen: boolean, 
         )}
         <button 
           onClick={onClose} 
-          className="w-full py-3 rounded-3xl font-bold transition-all bg-black/5 text-slate-500 hover:text-slate-900"
+          className={`w-full py-3 rounded-3xl font-bold transition-all ${
+            isDark ? "bg-white/5 text-slate-400 hover:text-white" : "bg-black/5 text-slate-500 hover:text-slate-900"
+          }`}
         >
           Tiếp tục với tài khoản đăng xuất
         </button>
       </div>
-    </LiquidModal>
-  );
+    </div>
+  </LiquidModal>
+);
 }
 
 function SearchBar({ isDark, query, setQuery, onClose }: { isDark: boolean, query: string, setQuery: (q: string) => void, onClose: () => void }) {
@@ -1948,7 +2063,7 @@ function App() {
       >
         <form onSubmit={verifyDev} className="space-y-4 text-left">
           <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase tracking-wider opacity-50 ml-4 text-slate-900">Mật khẩu</label>
+            <label className={`text-[10px] font-bold uppercase tracking-wider opacity-50 ml-4 ${isDark ? "text-white" : "text-slate-900"}`}>Mật khẩu</label>
             <input 
               autoFocus
               type="password" 
@@ -1957,7 +2072,9 @@ function App() {
               className={`w-full px-5 py-3 rounded-3xl border focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all ${
                 devError 
                   ? "border-red-500 bg-red-500/5" 
-                  : "bg-black/5 border-black/5 text-slate-900 placeholder-slate-400"
+                  : isDark 
+                    ? "bg-white/5 border-white/10 text-white placeholder-white/30" 
+                    : "bg-black/5 border-black/5 text-slate-900 placeholder-slate-400"
               }`}
               placeholder="••••••••"
             />
@@ -1974,7 +2091,9 @@ function App() {
             <button 
               type="button"
               onClick={() => { setShowDevPrompt(false); setDevPass(""); setDevError(false); }}
-              className="w-full py-3 rounded-3xl font-bold transition-all bg-black/5 text-slate-500 hover:text-slate-900"
+              className={`w-full py-3 rounded-3xl font-bold transition-all ${
+                isDark ? "bg-white/5 text-slate-400 hover:text-white" : "bg-black/5 text-slate-500 hover:text-slate-900"
+              }`}
             >
               Hủy
             </button>
