@@ -1527,9 +1527,10 @@ function SettingsContent({
   );
 }
 
-function AuthModal({ isOpen, onClose, isDark, liquidGlass }: { isOpen: boolean, onClose: () => void, isDark: boolean, liquidGlass: boolean }) {
+function AuthModal({ isOpen, onClose, isDark, liquidGlass, setIsDev, setUserData }: { isOpen: boolean, onClose: () => void, isDark: boolean, liquidGlass: boolean, setIsDev: (v: boolean) => void, setUserData: (d: any) => void }) {
   const [isLogin, setIsLogin] = useState(true);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [isSpecialMode, setIsSpecialMode] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -1543,6 +1544,23 @@ function AuthModal({ isOpen, onClose, isDark, liquidGlass }: { isOpen: boolean, 
     setError("");
     setSuccess("");
     
+    if (username === "special_guest" && password === "specialguest123") {
+      setLoading(true);
+      // Simulate login for special guest
+      setTimeout(() => {
+        setIsDev(true);
+        setUserData({
+          uid: "special_guest_uid",
+          email: "special_guest@vplay.vn",
+          displayName: "Tài khoản đặc biệt",
+          role: "user"
+        });
+        onClose();
+        setLoading(false);
+      }, 1000);
+      return;
+    }
+
     if (!isForgotPassword && !isLogin && password !== confirmPassword) {
       setError("Mật khẩu xác nhận không khớp.");
       return;
@@ -1597,11 +1615,13 @@ function AuthModal({ isOpen, onClose, isDark, liquidGlass }: { isOpen: boolean, 
   };
 
   const getTitle = () => {
+    if (!isSpecialMode) return "Thông báo hệ thống";
     if (isForgotPassword) return "Quên mật khẩu";
     return isLogin ? "Đăng nhập" : "Đăng ký";
   };
 
   const getDescription = () => {
+    if (!isSpecialMode) return "Thông tin về hệ thống tài khoản Vplay.";
     if (isForgotPassword) return "Nhập email hoặc tên đăng nhập để nhận liên kết đặt lại mật khẩu.";
     return "Tận hưởng và trải nghiệm đầy đủ các tính năng của Vplay ngay hôm nay!";
   };
@@ -1646,8 +1666,34 @@ function AuthModal({ isOpen, onClose, isDark, liquidGlass }: { isOpen: boolean, 
       description={getDescription()}
       liquidGlass={liquidGlass}
     >
-      <div className="space-y-4">
-        {/* Google Login Button */}
+      {!isSpecialMode ? (
+        <div className="space-y-6">
+          <div className={`p-4 rounded-2xl border ${isDark ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+            <p className={`text-sm leading-relaxed text-center ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+              "Hệ thống đăng nhập / đăng ký tài khoản Vplay hiện chưa hoàn thành và vẫn còn lỗi. Chúng tôi sẽ tạm thời cho bạn tài khoản đặc biệt để xem miễn phí (tuy nhiên bạn cần liên hệ các nhà phát triển Vplay để lấy thông tin đăng nhập). Mong quý khán giả thông cảm và vui lòng chờ đợi các bản cập nhật tiếp theo"
+            </p>
+          </div>
+          
+          <div className="flex flex-col gap-3">
+            <button 
+              onClick={() => setIsSpecialMode(true)}
+              className="w-full py-4 bg-purple-600 hover:bg-purple-500 text-white rounded-[32px] font-bold transition-all shadow-lg shadow-purple-600/20 active:scale-95"
+            >
+              Sử dụng tài khoản đặc biệt
+            </button>
+            <button 
+              onClick={onClose}
+              className={`w-full py-3 rounded-3xl font-bold transition-all ${
+                isDark ? "bg-white/5 text-slate-400 hover:text-white" : "bg-black/5 text-slate-500 hover:text-slate-900"
+              }`}
+            >
+              Tiếp tục với tài khoản đăng xuất
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* Google Login Button */}
         <button 
           onClick={handleGoogleLogin}
           disabled={loading}
@@ -1754,26 +1800,25 @@ function AuthModal({ isOpen, onClose, isDark, liquidGlass }: { isOpen: boolean, 
           {loading ? "..." : (isForgotPassword ? "Xác nhận" : (isLogin ? "Đăng nhập" : "Đăng ký"))}
         </button>
       </form>
-      <div className="mt-6 flex flex-col gap-3">
-        {isForgotPassword ? (
-          <button type="button" onClick={() => setIsForgotPassword(false)} className="text-purple-500 text-xs font-bold hover:underline">
-            Quay lại đăng nhập
+        <div className="mt-6 flex flex-col gap-3">
+          {isForgotPassword ? (
+            <button type="button" onClick={() => setIsForgotPassword(false)} className="text-purple-500 text-xs font-bold hover:underline">
+              Quay lại đăng nhập
+            </button>
+          ) : (
+            <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-purple-500 text-xs font-bold hover:underline">
+              {isLogin ? "Chưa có tài khoản? Đăng ký ngay" : "Đã có tài khoản? Đăng nhập"}
+            </button>
+          )}
+          <button 
+            onClick={() => setIsSpecialMode(false)} 
+            className="text-slate-500 text-[10px] font-bold hover:underline"
+          >
+            Xem thông báo hệ thống
           </button>
-        ) : (
-          <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-purple-500 text-xs font-bold hover:underline">
-            {isLogin ? "Chưa có tài khoản? Đăng ký ngay" : "Đã có tài khoản? Đăng nhập"}
-          </button>
-        )}
-        <button 
-          onClick={onClose} 
-          className={`w-full py-3 rounded-3xl font-bold transition-all ${
-            isDark ? "bg-white/5 text-slate-400 hover:text-white" : "bg-black/5 text-slate-500 hover:text-slate-900"
-          }`}
-        >
-          Tiếp tục với tài khoản đăng xuất
-        </button>
+        </div>
       </div>
-    </div>
+    )}
   </LiquidModal>
 );
 }
@@ -1986,6 +2031,15 @@ function App() {
           if (userSnap.exists()) {
             role = userSnap.data().role;
             setUserData(userSnap.data());
+          } else if (currentUser.uid === "special_guest_uid") {
+            // Special guest mock data
+            role = "user";
+            setUserData({
+              uid: "special_guest_uid",
+              email: "special_guest@vplay.vn",
+              displayName: "Tài khoản đặc biệt",
+              role: "user"
+            });
           } else {
             // Check if it's the default admin
             if (currentUser.email === "sonhuyc2kl@gmail.com") {
@@ -2046,7 +2100,7 @@ function App() {
       <AnimatePresence>
         {showSplash && <SplashScreen isDark={isDark} />}
       </AnimatePresence>
-      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} isDark={isDark} liquidGlass={liquidGlass} />
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} isDark={isDark} liquidGlass={liquidGlass} setIsDev={setIsDev} setUserData={setUserData} />
       
       {/* Developer Settings Choice */}
       <LiquidModal
