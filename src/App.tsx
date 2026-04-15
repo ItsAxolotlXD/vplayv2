@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useRef, ChangeEvent, FormEvent, ReactNode } from "react";
-import { Search, User, Tv, Calendar, Home, Play, Pause, Radio, Info, Sun, Moon, Maximize, Settings, Volume2, VolumeX, CheckCircle2, Shield, LogOut, LogIn, Heart, X, Lock, Terminal, Zap, Clock, History, MousePointer2, Sliders, ChevronLeft, ChevronRight, Mic, Layers, Filter, Sparkles } from "lucide-react";
+import { Search, User, Tv, Calendar, Home, Play, Pause, Radio, Info, Sun, Moon, Maximize, Settings, Volume2, VolumeX, CheckCircle2, Shield, LogOut, LogIn, Heart, X, Lock, Terminal, Zap, Clock, History, MousePointer2, Sliders, ChevronLeft, ChevronRight, Mic, Layers, Filter, Sparkles, Camera, Palette, Layout, MessageSquare } from "lucide-react";
 import Hls from "hls.js";
 import { motion, AnimatePresence, MotionConfig } from "motion/react";
 import { auth, db } from "./firebase";
@@ -29,6 +29,43 @@ const SettingsIcon = ({ className }: { className?: string }) => (
   <Settings className={`${className} flex-shrink-0`} />
 );
 
+const SplashScreen = ({ isDark }: { isDark: boolean }) => (
+  <motion.div
+    initial={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    transition={{ duration: 0.8 }}
+    className={`fixed inset-0 z-[100] flex flex-col items-center justify-center ${
+      isDark 
+        ? "bg-gradient-to-br from-rose-950 via-purple-950 to-red-950" 
+        : "bg-gradient-to-br from-rose-200 via-purple-200 to-red-100"
+    }`}
+  >
+    <motion.div
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+      className="flex flex-col items-center space-y-12"
+    >
+      <div className="relative">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+          className="absolute -inset-12 rounded-full border-4 border-dashed border-purple-500/40"
+        />
+        <motion.img 
+          initial={{ scale: 0.9 }}
+          animate={{ scale: [0.9, 1.05, 0.9] }}
+          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+          src="https://static.wikia.nocookie.net/ftv/images/9/93/Vpl.png/revision/latest?cb=20260412135144&path-prefix=vi" 
+          alt="Vplay Logo" 
+          className="h-56 w-56 md:h-72 md:w-72 object-contain drop-shadow-[0_0_30px_rgba(168,85,247,0.5)]"
+          referrerPolicy="no-referrer"
+        />
+      </div>
+    </motion.div>
+  </motion.div>
+);
+
 const Sparkles2 = ({ className }: { className?: string }) => (
   <svg 
     viewBox="0 0 24 24" 
@@ -46,9 +83,9 @@ const Sparkles2 = ({ className }: { className?: string }) => (
 
 const baseTabs = [
   { name: "Trang chủ", icon: Home, id: "Trang chủ" },
-  { name: "Phát sóng", icon: Radio, id: "Phát sóng" },
-  { name: "Sự kiện", icon: Sparkles2, id: "Sự kiện" },
-  { name: "Cài đặt", icon: SettingsIcon, id: "Cài đặt" },
+  { name: "Phát sóng", icon: Tv, id: "Phát sóng" },
+  { name: "Sự kiện", icon: Sparkles, id: "Sự kiện" },
+  { name: "Cài đặt", icon: Settings, id: "Cài đặt" },
 ];
 
 // Channel type is imported from channels.ts
@@ -132,22 +169,25 @@ function ChannelLogo({ src, alt, className, isDark }: { src: string, alt: string
 
   const scaleMap: { [key: string]: string } = {
     "Lâm Đồng 1 (LTV1)": "md:scale-[1.4]",
-    "Đà Nẵng 1 (DNRT1)": "md:scale-[1.7]",
-    "Đà Nẵng 2 (DNRT2)": "md:scale-[1.7]",
+    "Đà Nẵng 1 (DNRT1)": "scale-[1.5] md:scale-[1.7]",
+    "Đà Nẵng 2 (DNRT2)": "scale-[1.4] md:scale-[1.7]",
     "Thái Nguyên (TN)": "md:scale-[1.5]",
     "Điện Biên (ĐTV)": "md:scale-[0.8]",
     "Hưng Yên (HYTV)": "md:scale-[1.7]",
-    "Đồng Tháp 1 (THĐT1)": "md:scale-[1.4]",
+    "Đồng Tháp 1 (THĐT1)": "scale-[2.0] md:scale-[1.4]",
     "Huế (HueTV)": "md:scale-[1.4]",
     "Tây Ninh (TN)": "md:scale-[1.4]",
     "H1": "md:scale-[1.4]",
     "H2": "md:scale-[1.4]",
-    "Đắk Lắk (DRT)": "md:scale-[1.4]",
+    "Đắk Lắk (DRT)": "scale-[1.2] md:scale-[1.4]",
+    "ĐNNRTV1": "scale-[1.1] md:scale-[1.1]",
+    "ĐNNRTV2": "scale-[1.1] md:scale-[1.1]",
     "Nghệ An (NTV)": "md:scale-[1.4]",
     "Quảng Ngãi 1 (QNgTV1)": "md:scale-[1.5]",
     "Quảng Ngãi 2 (QNgTV2)": "md:scale-[1.5]",
-    "VTV1": "scale-[1.01] md:scale-[0.79]",
-    "VTV7": "scale-[1.02] md:scale-[0.79]",
+    "HTV Thể Thao": "scale-[1.5] md:scale-[1.5]",
+    "VTV1": "scale-[1.14] md:scale-[0.92]",
+    "VTV7": "scale-[1.24] md:scale-[1.01]",
     "VTV10": "scale-[1.11] md:scale-[1.0]"
   };
 
@@ -263,17 +303,31 @@ function HomeContent({ setActiveTab, setActiveChannel, isDark, favorites, toggle
   return (
     <div className="p-4 md:p-6 space-y-10">
       {/* Welcome Message */}
-      <div className="text-center py-6">
-        <motion.h1 
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={`text-3xl md:text-5xl font-black tracking-tighter ${isDark ? "text-white" : "text-slate-900"}`}
+      <div className="text-center py-6 space-y-6">
+        <motion.div
+          initial={{ scale: 0.5, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="flex justify-center"
         >
-          Chào mừng đến với <span className="text-purple-500">Vplay!</span>
-        </motion.h1>
-        <p className={`mt-2 text-sm md:text-base font-medium ${isDark ? "text-slate-400" : "text-slate-600"}`}>
-          Trải nghiệm truyền hình trực tuyến đỉnh cao
-        </p>
+          <img 
+            src="https://static.wikia.nocookie.net/ftv/images/9/93/Vpl.png/revision/latest?cb=20260412135144&path-prefix=vi" 
+            alt="Vplay Logo" 
+            className="h-40 w-40 md:h-56 md:w-56 object-contain drop-shadow-2xl"
+            referrerPolicy="no-referrer"
+          />
+        </motion.div>
+        <div>
+          <motion.h1 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`text-3xl md:text-5xl font-black tracking-tighter ${isDark ? "text-white" : "text-slate-900"}`}
+          >
+            Chào mừng đến với <span className="text-purple-500">Vplay!</span>
+          </motion.h1>
+          <p className={`mt-2 text-sm md:text-base font-medium ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+            Trải nghiệm truyền hình trực tuyến đỉnh cao
+          </p>
+        </div>
       </div>
 
       {/* Slider */}
@@ -779,18 +833,28 @@ function TVContent({ active, setActive, isDark, favorites, toggleFavorite, user,
             <div key={cat}>
               <h3 className={`mb-4 text-lg font-semibold ${isDark ? "text-slate-200" : "text-slate-800"}`}>{cat}</h3>
               <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4">
-                {filteredChannels.filter(c => c.category === cat).map((ch) => (
-                  <ChannelCard 
-                    key={`${ch.name}-${ch.stream}`} 
-                    ch={ch} 
-                    onClick={() => setActive(ch)} 
-                    isDark={isDark} 
-                    isActive={active.name === ch.name} 
-                    favorites={favorites} 
-                    toggleFavorite={toggleFavorite} 
-                    liquidGlass={liquidGlass}
-                  />
-                ))}
+                {cat === "Phát thanh" ? (
+                  <div className={`col-span-full p-8 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 ${
+                    isDark ? "border-white/10 bg-white/5 text-slate-400" : "border-black/5 bg-black/5 text-slate-500"
+                  }`}>
+                    <Sparkles className="w-8 h-8 animate-pulse text-purple-500" />
+                    <p className="font-bold text-lg tracking-widest uppercase">Coming Soon!</p>
+                    <p className="text-xs opacity-60">Tính năng đang được phát triển</p>
+                  </div>
+                ) : (
+                  filteredChannels.filter(c => c.category === cat).map((ch) => (
+                    <ChannelCard 
+                      key={`${ch.name}-${ch.stream}`} 
+                      ch={ch} 
+                      onClick={() => setActive(ch)} 
+                      isDark={isDark} 
+                      isActive={active.name === ch.name} 
+                      favorites={favorites} 
+                      toggleFavorite={toggleFavorite} 
+                      liquidGlass={liquidGlass}
+                    />
+                  ))
+                )}
               </div>
             </div>
           ))}
@@ -986,6 +1050,10 @@ function EventsContent({ isDark, liquidGlass }: { isDark: boolean, liquidGlass: 
     { title: "Chung Kết Rap Việt", date: "21:00 - 16/04", channel: "HTV2 - Vie Channel", type: "Giải trí" },
     { title: "Lễ Trao Giải Oscar", date: "07:00 - 18/04", channel: "VTV3", type: "Sự kiện" },
     { title: "Đại Nhạc Hội Vplay", date: "19:00 - 20/04", channel: "Vplay Live", type: "Đặc sắc" },
+    { title: "Chung kết Giọng hát Vplay", date: "20:00 - 25/04", channel: "Vplay Live", type: "Đặc sắc" },
+    { title: "GALA Vplay 2027", date: "19:00 - 31/12", channel: "Vplay Live", type: "Đặc sắc" },
+    { title: "Giải bóng đá vô địch thế giới Vplay Cup 2026", date: "21:00 - 15/06", channel: "Vplay Sports", type: "Thể thao" },
+    { title: "V-play Concert Đặc Biệt", date: "20:30 - 01/05", channel: "Vplay Live", type: "Đặc sắc" },
   ];
 
   return (
@@ -1124,11 +1192,12 @@ function AdminContent({ isDark, liquidGlass }: { isDark: boolean, liquidGlass: b
 function SettingsContent({ 
   isDark, 
   setIsDark, 
-  isSidebar, 
   isDev, 
   setIsDev, 
   liquidGlass, 
   setLiquidGlass,
+  useSidebar,
+  setUseSidebar,
   user,
   userData,
   setUserData,
@@ -1137,21 +1206,18 @@ function SettingsContent({
 }: { 
   isDark: boolean, 
   setIsDark: (val: boolean) => void, 
-  isSidebar?: boolean, 
   isDev: boolean, 
   setIsDev: (val: boolean) => void,
   liquidGlass: boolean,
   setLiquidGlass: (val: boolean) => void,
+  useSidebar: boolean,
+  setUseSidebar: (val: boolean) => void,
   user: FirebaseUser | null,
   userData: any,
   setUserData: any,
   onAlert: (title: string, msg: string) => void,
   onLogin: () => void
 }) {
-  const [showDevPrompt, setShowDevPrompt] = useState(false);
-  const [devPass, setDevPass] = useState("");
-  const [devError, setDevError] = useState(false);
-
   const [name, setName] = useState(userData?.displayName || user?.displayName || "");
   const [avatar, setAvatar] = useState(userData?.photoURL || user?.photoURL || "");
   const [saving, setSaving] = useState(false);
@@ -1226,246 +1292,223 @@ function SettingsContent({
     setSaving(false);
   };
 
-  const handleDevToggle = () => {
-    if (isDev) {
-      setIsDev(false);
-    } else {
-      setShowDevPrompt(true);
-    }
-  };
-
-  const verifyDev = (e: FormEvent) => {
-    e.preventDefault();
-    if (devPass === "devunlock") {
-      setIsDev(true);
-      setShowDevPrompt(false);
-      setDevPass("");
-      setDevError(false);
-    } else {
-      setDevError(true);
-      setDevPass("");
-    }
-  };
-
   return (
-    <div className={`${isSidebar ? "space-y-8" : "p-4 md:p-8 max-w-3xl mx-auto space-y-8"}`}>
-      {!isSidebar && <h2 className={`text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Cài đặt</h2>}
-      
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
       {/* Profile Section */}
-      <div className={`p-6 rounded-xl border ${isDark ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white"}`}>
+      <div className={`p-6 rounded-3xl border flex flex-col h-full ${isDark ? "border-white/5 bg-white/5" : "border-black/5 bg-white"} ${liquidGlass ? "backdrop-blur-xl" : ""}`}>
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 rounded-xl bg-purple-500/20 text-purple-500">
+            <User size={20} />
+          </div>
+          <h3 className={`font-bold text-lg ${isDark ? "text-white" : "text-slate-900"}`}>Hồ sơ cá nhân</h3>
+        </div>
+
         {!user ? (
-          <div className="flex flex-col items-center text-center space-y-4">
+          <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4 py-4">
             <div className={`w-20 h-20 rounded-full flex items-center justify-center border-2 ${isDark ? "bg-slate-800 border-slate-700" : "bg-slate-100 border-slate-200"}`}>
               <User className="w-10 h-10 text-slate-400" />
             </div>
             <div>
-              <p className={`font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Khách</p>
-              <p className="text-xs text-slate-500 mt-1">Đăng nhập để đồng bộ dữ liệu</p>
+              <p className={`font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Chưa đăng nhập</p>
+              <p className="text-xs text-slate-500 mt-1">Đăng nhập để đồng bộ dữ liệu của bạn</p>
             </div>
             <button 
               onClick={onLogin}
-              className={`px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm transition-all shadow-lg shadow-purple-600/20 active:scale-95 ${
-                liquidGlass ? "rounded-xl" : "rounded-lg"
-              }`}
+              className="px-8 py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-2xl transition-all shadow-lg shadow-purple-600/20 active:scale-95"
             >
-              Đăng nhập
+              Đăng nhập ngay
             </button>
           </div>
         ) : (
-          <div className="space-y-6">
-            <div className="flex items-center gap-4">
+          <div className="space-y-6 flex-1">
+            <div className="flex flex-col items-center gap-4">
               <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                 {avatar ? (
-                  <img src={avatar} alt="Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-purple-500 shadow-lg" referrerPolicy="no-referrer" />
+                  <img src={avatar} alt="Avatar" className="w-24 h-24 rounded-full object-cover border-4 border-purple-500/30 shadow-2xl" referrerPolicy="no-referrer" />
                 ) : (
-                  <div className={`w-16 h-16 rounded-full flex items-center justify-center border-2 ${isDark ? "bg-slate-800 border-slate-700" : "bg-slate-100 border-slate-200"}`}>
-                    <User className="w-8 h-8 text-slate-400" />
+                  <div className={`w-24 h-24 rounded-full flex items-center justify-center border-2 ${isDark ? "bg-slate-800 border-slate-700" : "bg-slate-100 border-slate-200"}`}>
+                    <User className="w-12 h-12 text-slate-400" />
                   </div>
                 )}
-                <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <span className="text-white text-[8px] font-bold uppercase">Đổi</span>
+                <div className="absolute inset-0 bg-black/60 rounded-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300">
+                  <Camera className="text-white w-6 h-6 mb-1" />
+                  <span className="text-white text-[10px] font-black uppercase">Thay đổi</span>
                 </div>
                 <input type="file" accept="image/*" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
               </div>
-              <div className="flex-1 space-y-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider opacity-50">Tên hiển thị</label>
-                <div className="flex gap-2">
+              
+              <div className="w-full space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest opacity-40 ml-1">Tên hiển thị</label>
                   <input 
                     value={name} 
                     onChange={e => setName(e.target.value)} 
-                    className={`flex-1 px-3 py-1.5 text-sm border focus:outline-none focus:ring-2 focus:ring-purple-500 ${
-                      liquidGlass ? "rounded-lg" : "rounded-md"
-                    } ${isDark ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-200 text-slate-900"}`} 
+                    placeholder="Nhập tên của bạn..."
+                    className={`w-full px-5 py-3 text-sm border focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all rounded-2xl ${
+                      isDark ? "bg-white/5 border-white/10 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                    }`} 
                   />
+                </div>
+                
+                <div className="flex gap-3">
                   <button 
                     onClick={handleSave} 
                     disabled={saving}
-                    className={`px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs disabled:opacity-50 transition-all ${
-                      liquidGlass ? "rounded-lg" : "rounded-md"
-                    }`}
+                    className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-2xl disabled:opacity-50 transition-all shadow-lg shadow-purple-600/20"
                   >
-                    {saving ? "..." : "Lưu"}
+                    {saving ? "Đang lưu..." : "Cập nhật hồ sơ"}
+                  </button>
+                  <button 
+                    onClick={() => signOut(auth)}
+                    className={`p-3 rounded-2xl border transition-all ${isDark ? "bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/20" : "bg-red-50 border-red-200 text-red-600 hover:bg-red-100"}`}
+                    title="Đăng xuất"
+                  >
+                    <LogOut size={20} />
                   </button>
                 </div>
               </div>
             </div>
-            <button 
-              onClick={() => signOut(auth)}
-              className={`w-full py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all border text-xs ${isDark ? "bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/20" : "bg-red-50 border-red-100 text-red-600 hover:bg-red-100"}`}
-            >
-              <LogOut className="w-4 h-4" />
-              Đăng xuất
-            </button>
           </div>
         )}
       </div>
 
-      {/* Info Content */}
-      <div className={`space-y-4 p-6 rounded-xl border leading-relaxed ${isDark ? "border-slate-800 bg-slate-900/50 text-slate-300" : "border-slate-200 bg-white text-slate-700"}`}>
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <h3 className={`text-lg font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Vplay by OTA System</h3>
-            <p className="text-xs opacity-60">Phiên bản vDev-260412</p>
+      {/* Appearance & Experience */}
+      <div className={`p-6 rounded-3xl border flex flex-col h-full ${isDark ? "border-white/5 bg-white/5" : "border-black/5 bg-white"} ${liquidGlass ? "backdrop-blur-xl" : ""}`}>
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 rounded-xl bg-blue-500/20 text-blue-500">
+            <Palette size={20} />
           </div>
-          <div className={`px-3 py-1 rounded-full text-[10px] font-black ${isDark ? "bg-purple-500/20 text-purple-400" : "bg-purple-100 text-purple-600"}`}>
-            STABLE
-          </div>
+          <h3 className={`font-bold text-lg ${isDark ? "text-white" : "text-slate-900"}`}>Giao diện & Trải nghiệm</h3>
         </div>
-      </div>
-      
-      {/* Developer Mode Prompt */}
-      <LiquidModal
-        isOpen={showDevPrompt}
-        onClose={() => { setShowDevPrompt(false); setDevPass(""); setDevError(false); }}
-        isDark={isDark}
-        title="Chế độ nhà phát triển"
-        description="Kích hoạt tính năng nhà phát triển để truy cập vào các quyền đặc biệt. Bạn cần phải có mật khẩu dành cho nhà phát triển được chia sẻ bởi Chủ Thớt để kích hoạt"
-        liquidGlass={liquidGlass}
-      >
-        <form onSubmit={verifyDev} className="space-y-4 text-left">
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase tracking-wider opacity-50 ml-4 text-slate-900">Mật khẩu</label>
-            <input 
-              autoFocus
-              type="password" 
-              value={devPass} 
-              onChange={e => setDevPass(e.target.value)}
-              className={`w-full px-5 py-3 rounded-3xl border focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all ${
-                devError 
-                  ? "border-red-500 bg-red-500/5" 
-                  : "bg-black/5 border-black/5 text-slate-900 placeholder-slate-400"
-              }`}
-              placeholder="••••••••"
-            />
-            {devError && <p className="text-red-500 text-[10px] mt-2 font-bold text-center">Mật khẩu không chính xác!</p>}
-          </div>
-          
-          <div className="flex flex-col gap-3 pt-2">
+
+        <div className="space-y-4 flex-1">
+          {/* Theme Toggle */}
+          <div className={`p-4 rounded-2xl flex items-center justify-between border ${isDark ? "bg-white/5 border-white/5" : "bg-slate-50 border-slate-100"}`}>
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-lg ${isDark ? "bg-yellow-400/20 text-yellow-400" : "bg-orange-100 text-orange-500"}`}>
+                {isDark ? <Moon size={18} /> : <Sun size={18} />}
+              </div>
+              <div>
+                <p className={`text-sm font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Chế độ giao diện</p>
+                <p className="text-[10px] opacity-50">{isDark ? "Giao diện tối" : "Giao diện sáng"}</p>
+              </div>
+            </div>
             <button 
-              type="submit"
-              className="w-full py-4 bg-purple-600 hover:bg-purple-500 text-white rounded-[32px] font-bold transition-all shadow-lg shadow-purple-600/20 active:scale-95"
+              onClick={() => setIsDark(!isDark)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isDark ? "bg-purple-600" : "bg-slate-300"}`}
             >
-              Xác nhận
-            </button>
-            <button 
-              type="button"
-              onClick={() => { setShowDevPrompt(false); setDevPass(""); setDevError(false); }}
-              className="w-full py-3 rounded-3xl font-bold transition-all bg-black/5 text-slate-500 hover:text-slate-900"
-            >
-              Hủy
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isDark ? "translate-x-6" : "translate-x-1"}`} />
             </button>
           </div>
-        </form>
-      </LiquidModal>
 
-      {/* Theme Toggle */}
-      <div className={`p-6 rounded-xl border ${isDark ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white"}`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {isDark ? <Moon className="h-6 w-6 text-yellow-400" /> : <Sun className="h-6 w-6 text-orange-500" />}
-            <div>
-              <p className={`font-medium ${isDark ? "text-white" : "text-slate-900"}`}>Chế độ giao diện</p>
-              <p className="text-sm text-slate-500">{isDark ? "Tối" : "Sáng"}</p>
+          {/* Liquid Glass Toggle */}
+          <div className={`p-4 rounded-2xl flex items-center justify-between border ${isDark ? "bg-white/5 border-white/5" : "bg-slate-50 border-slate-100"}`}>
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-lg ${liquidGlass ? "bg-purple-400/20 text-purple-400" : "bg-slate-200 text-slate-400"}`}>
+                <Layers size={18} />
+              </div>
+              <div>
+                <p className={`text-sm font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Liquid Glass</p>
+                <p className="text-[10px] opacity-50">Hiệu ứng kính mờ iOS 26</p>
+              </div>
             </div>
+            <button 
+              onClick={() => setLiquidGlass(!liquidGlass)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${liquidGlass ? "bg-purple-600" : "bg-slate-300"}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${liquidGlass ? "translate-x-6" : "translate-x-1"}`} />
+            </button>
           </div>
-          <button 
-            onClick={() => setIsDark(!isDark)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isDark ? "bg-purple-600" : "bg-slate-300"}`}
-          >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isDark ? "translate-x-6" : "translate-x-1"}`} />
-          </button>
-        </div>
-      </div>
 
-      {/* Developer Mode Toggle */}
-      <div className={`p-6 rounded-xl border ${isDark ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white"}`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Terminal className={`h-6 w-6 ${isDev ? "text-purple-400" : "text-slate-400"}`} />
-            <div>
-              <p className={`font-medium ${isDark ? "text-white" : "text-slate-900"}`}>Chế độ Developer</p>
-              <p className="text-sm text-slate-500">{isDev ? "Đã kích hoạt" : "Đã tắt"}</p>
+          {/* Sidebar Toggle */}
+          <div className={`p-4 rounded-2xl flex items-center justify-between border ${isDark ? "bg-white/5 border-white/5" : "bg-slate-50 border-slate-100"}`}>
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-lg ${useSidebar ? "bg-green-400/20 text-green-400" : "bg-slate-200 text-slate-400"}`}>
+                <Layout size={18} />
+              </div>
+              <div>
+                <p className={`text-sm font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Thanh Sidebar</p>
+                <p className="text-[10px] opacity-50">Tối ưu cho máy tính</p>
+              </div>
             </div>
+            <button 
+              onClick={() => setUseSidebar(!useSidebar)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${useSidebar ? "bg-purple-600" : "bg-slate-300"}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${useSidebar ? "translate-x-6" : "translate-x-1"}`} />
+            </button>
           </div>
-          <button 
-            onClick={handleDevToggle}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isDev ? "bg-purple-600" : "bg-slate-300"}`}
-          >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isDev ? "translate-x-6" : "translate-x-1"}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Liquid Glass Toggle */}
-      <div className={`p-6 rounded-xl border ${isDark ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white"}`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Layers className={`h-6 w-6 ${liquidGlass ? "text-purple-400" : "text-slate-400"}`} />
-            <div>
-              <p className={`font-medium ${isDark ? "text-white" : "text-slate-900"}`}>Giao diện Liquid Glass</p>
-              <p className="text-xs text-slate-500 max-w-[200px] md:max-w-xs">Tuỳ chọn giao diện Liquid Glass như trên phiên bản iOS 26. Khuyến khích tắt tính năng này nếu như bạn đang dùng thiết bị hiệu năng yếu</p>
-            </div>
-          </div>
-          <button 
-            onClick={() => setLiquidGlass(!liquidGlass)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${liquidGlass ? "bg-purple-600" : "bg-slate-300"}`}
-          >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${liquidGlass ? "translate-x-6" : "translate-x-1"}`} />
-          </button>
         </div>
       </div>
 
       {/* Feedback Section */}
-      <div className={`p-6 rounded-xl border ${isDark ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white"}`}>
-        <h3 className={`text-lg font-semibold mb-4 ${isDark ? "text-white" : "text-slate-900"}`}>Góp ý & Phản hồi</h3>
-        <p className={`text-sm mb-4 ${isDark ? "text-slate-400" : "text-slate-600"}`}>Chúng tôi luôn lắng nghe ý kiến của bạn để hoàn thiện website hơn.</p>
+      <div className={`p-6 rounded-3xl border ${isDark ? "border-white/5 bg-white/5" : "border-black/5 bg-white"} ${liquidGlass ? "backdrop-blur-xl" : ""}`}>
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 rounded-xl bg-pink-500/20 text-pink-500">
+            <MessageSquare size={20} />
+          </div>
+          <h3 className={`font-bold text-lg ${isDark ? "text-white" : "text-slate-900"}`}>Góp ý & Phản hồi</h3>
+        </div>
+        
         <div className="space-y-4">
           <textarea 
-            placeholder="Nhập ý kiến của bạn tại đây..."
-            className={`w-full p-4 rounded-xl border focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[120px] ${isDark ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"}`}
+            placeholder="Chúng tôi luôn lắng nghe ý kiến của bạn..."
+            className={`w-full p-4 rounded-2xl border focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[100px] text-sm transition-all ${
+              isDark ? "bg-white/5 border-white/10 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+            }`}
           />
-          <button className="px-6 py-2.5 bg-purple-500 text-white font-medium rounded-lg hover:bg-purple-600 transition-colors">
+          <button className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-2xl transition-all shadow-lg shadow-purple-600/20">
             Gửi phản hồi
           </button>
         </div>
       </div>
 
-      {/* Info Content - Detailed */}
-      <div className={`space-y-6 p-6 rounded-xl border leading-relaxed ${isDark ? "border-slate-800 bg-slate-900/50 text-slate-300" : "border-slate-200 bg-white text-slate-700"}`}>
-        <div className="space-y-2">
-          <h3 className={`text-lg font-semibold ${isDark ? "text-white" : "text-slate-900"}`}>Một số kênh đang sửa chữa:</h3>
-          <p className="text-sm">Hải Phòng, Hải Phòng 3, Sơn La, Ninh Bình, Bắc Ninh, Hưng Yên, Khánh Hoà 1, Quảng Ngãi 2</p>
-          <p className="italic text-xs opacity-60">Các kênh được nêu trên sẽ được sửa chữa ở các phiên bản sau!</p>
+      {/* System Info */}
+      <div className={`p-6 rounded-3xl border flex flex-col justify-between ${isDark ? "border-white/5 bg-white/5" : "border-black/5 bg-white"} ${liquidGlass ? "backdrop-blur-xl" : ""}`}>
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-slate-500/20 text-slate-400">
+                <Info size={20} />
+              </div>
+              <div>
+                <h3 className={`font-bold text-lg ${isDark ? "text-white" : "text-slate-900"}`}>Hệ thống</h3>
+                <p className="text-[10px] opacity-50 font-mono">vDev.26415</p>
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              <div className="px-2 py-0.5 rounded bg-yellow-400 text-[10px] font-black text-black">PREVIEW</div>
+              <p className="text-[8px] opacity-40 font-bold uppercase tracking-tighter">OTA System</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <p className={`text-xs font-bold uppercase tracking-widest opacity-40 ${isDark ? "text-white" : "text-slate-900"}`}>Ủng hộ chúng tôi</p>
+            <div className="grid grid-cols-2 gap-2">
+              {[1, 2, 3, 4].map(num => (
+                <a 
+                  key={num}
+                  href={`https://www.youtube.com/@ota${num === 1 ? 'one' : num === 2 ? 'two' : num === 3 ? 'three' : 'four'}fr253`} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className={`flex items-center gap-2 p-2 rounded-xl border text-[10px] font-bold transition-all ${
+                    isDark ? "bg-white/5 border-white/5 hover:bg-white/10 text-slate-300" : "bg-slate-50 border-slate-100 hover:bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  <div className="w-4 h-4 rounded-full bg-red-600 flex items-center justify-center text-white">
+                    <Play size={8} fill="currentColor" />
+                  </div>
+                  Youtube #{num}
+                </a>
+              ))}
+            </div>
+          </div>
         </div>
 
-        <div className={`space-y-2 pt-4 border-t ${isDark ? "border-slate-800" : "border-slate-200"}`}>
-          <h3 className={`text-lg font-semibold ${isDark ? "text-white" : "text-slate-900"}`}>Ủng hộ website:</h3>
-          <ul className="space-y-2 text-sm">
-            <li><a href="https://www.youtube.com/@otaonefr253" target="_blank" rel="noopener noreferrer" className="text-purple-500 hover:underline">https://www.youtube.com/@otaonefr253</a></li>
-            <li><a href="https://www.youtube.com/@otatwofr253" target="_blank" rel="noopener noreferrer" className="text-purple-500 hover:underline">https://www.youtube.com/@otatwofr253</a></li>
-            <li><a href="https://www.youtube.com/@otathreefr253" target="_blank" rel="noopener noreferrer" className="text-purple-500 hover:underline">https://www.youtube.com/@otathreefr253</a></li>
-            <li><a href="https://www.youtube.com/@otafourfr253" target="_blank" rel="noopener noreferrer" className="text-purple-500 hover:underline">https://www.youtube.com/@otafourfr253</a></li>
-          </ul>
+        <div className="mt-6 pt-4 border-t border-white/5">
+          <p className="text-[10px] leading-relaxed opacity-50 italic">
+            * Một số kênh (Hải Phòng, Sơn La, Ninh Bình...) đang được bảo trì và sẽ sớm quay trở lại.
+          </p>
         </div>
       </div>
     </div>
@@ -1717,7 +1760,8 @@ function ProtectedContent({ children, user, onLogin, isDark, isDev, liquidGlass 
   return <>{children}</>;
 }
 
-export default function App() {
+function App() {
+  const [showSplash, setShowSplash] = useState(true);
   const [activeTab, setActiveTab] = useState("Trang chủ");
   const [lastTab, setLastTab] = useState("Trang chủ");
   const [prevTab, setPrevTab] = useState("Trang chủ");
@@ -1725,8 +1769,19 @@ export default function App() {
   const [hoveredTab, setHoveredTab] = useState<string | null>(null);
   const [hoveredTabRect, setHoveredTabRect] = useState<DOMRect | null>(null);
   const [liquidGlass, setLiquidGlass] = useState(true);
+  const [useSidebar, setUseSidebar] = useState(() => {
+    return localStorage.getItem("vplay_sidebar") === "true";
+  });
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const [activeChannel, setActiveChannel] = useState(channels[0]);
   const [sortOrder, setSortOrder] = useState<"default" | "az" | "za">("default");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowSplash(false);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (activeTab !== "Cài đặt") {
@@ -1738,6 +1793,31 @@ export default function App() {
   }, [activeTab]);
   const [isDark, setIsDark] = useState(true); // Default to dark for better gradient look
   const [searchQuery, setSearchQuery] = useState("");
+  const [showDevPrompt, setShowDevPrompt] = useState(false);
+  const [devPass, setDevPass] = useState("");
+  const [devError, setDevError] = useState(false);
+
+  useEffect(() => {
+    if (searchQuery.toLowerCase() === "devmode") {
+      setShowDevPrompt(true);
+      setSearchQuery("");
+      setIsSearchOpen(false);
+    }
+  }, [searchQuery]);
+
+  const verifyDev = (e: FormEvent) => {
+    e.preventDefault();
+    if (devPass === "devunlock") {
+      setIsDev(true);
+      setShowDevPrompt(false);
+      setDevPass("");
+      setDevError(false);
+    } else {
+      setDevError(true);
+      setDevPass("");
+    }
+  };
+
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [userData, setUserData] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -1748,6 +1828,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("vplay_dev_mode", isDev.toString());
   }, [isDev]);
+
+  useEffect(() => {
+    localStorage.setItem("vplay_sidebar", useSidebar.toString());
+  }, [useSidebar]);
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [favorites, setFavorites] = useState<string[]>(() => {
@@ -1840,27 +1924,76 @@ export default function App() {
     tabs.push({ name: "Quản trị", icon: Shield, id: "Quản trị" });
   }
 
-  const displayTab = activeTab === "Cài đặt" ? lastTab : activeTab;
+  const displayTab = activeTab;
 
   return (
     <div className={`${
       isDark 
         ? "bg-gradient-to-br from-rose-950 via-purple-950 to-red-950 text-white" 
         : "bg-gradient-to-br from-rose-200 via-purple-200 to-red-100 text-slate-950"
-    } min-h-screen flex flex-col transition-colors duration-500`}>
+    } min-h-screen flex transition-colors duration-500 ${useSidebar ? "flex-row" : "flex-col"}`}>
+      <AnimatePresence>
+        {showSplash && <SplashScreen isDark={isDark} />}
+      </AnimatePresence>
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} isDark={isDark} liquidGlass={liquidGlass} />
       
-      <AnimatePresence>
-        {isSearchOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsSearchOpen(false)}
-            className={`fixed inset-0 z-[45] bg-black/20 ${liquidGlass ? "backdrop-blur-[2px]" : ""}`}
-          />
-        )}
-      </AnimatePresence>
+      {/* Developer Mode Prompt */}
+      <LiquidModal
+        isOpen={showDevPrompt}
+        onClose={() => { setShowDevPrompt(false); setDevPass(""); setDevError(false); }}
+        isDark={isDark}
+        title="Chế độ nhà phát triển"
+        description="Kích hoạt tính năng nhà phát triển để truy cập vào các quyền đặc biệt. Bạn cần phải có mật khẩu dành cho nhà phát triển được chia sẻ bởi Chủ Thớt để kích hoạt"
+        liquidGlass={liquidGlass}
+      >
+        <form onSubmit={verifyDev} className="space-y-4 text-left">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-wider opacity-50 ml-4 text-slate-900">Mật khẩu</label>
+            <input 
+              autoFocus
+              type="password" 
+              value={devPass} 
+              onChange={e => setDevPass(e.target.value)}
+              className={`w-full px-5 py-3 rounded-3xl border focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all ${
+                devError 
+                  ? "border-red-500 bg-red-500/5" 
+                  : "bg-black/5 border-black/5 text-slate-900 placeholder-slate-400"
+              }`}
+              placeholder="••••••••"
+            />
+            {devError && <p className="text-red-500 text-[10px] mt-2 font-bold text-center">Mật khẩu không chính xác!</p>}
+          </div>
+          
+          <div className="flex flex-col gap-3 pt-2">
+            <button 
+              type="submit"
+              className="w-full py-4 bg-purple-600 hover:bg-purple-500 text-white rounded-[32px] font-bold transition-all shadow-lg shadow-purple-600/20 active:scale-95"
+            >
+              Xác nhận
+            </button>
+            <button 
+              type="button"
+              onClick={() => { setShowDevPrompt(false); setDevPass(""); setDevError(false); }}
+              className="w-full py-3 rounded-3xl font-bold transition-all bg-black/5 text-slate-500 hover:text-slate-900"
+            >
+              Hủy
+            </button>
+          </div>
+        </form>
+      </LiquidModal>
+
+      <div className={`flex-1 flex flex-col min-h-screen ${useSidebar ? (isSidebarExpanded ? "md:pl-72" : "md:pl-24") : ""}`}>
+        <AnimatePresence>
+          {isSearchOpen && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsSearchOpen(false)}
+              className={`fixed inset-0 z-[45] bg-black/20 ${liquidGlass ? "backdrop-blur-[2px]" : ""}`}
+            />
+          )}
+        </AnimatePresence>
 
       <LiquidModal 
         isOpen={!!customAlert} 
@@ -1878,52 +2011,6 @@ export default function App() {
         </button>
       </LiquidModal>
 
-      <AnimatePresence>
-        {activeTab === "Cài đặt" && (
-          <>
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setActiveTab(lastTab)}
-              className="fixed inset-0 z-[55] bg-black/5 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className={`fixed top-0 right-0 h-full w-full md:w-[400px] z-[60] border-l shadow-2xl overflow-y-auto ${isDark ? "bg-slate-900/95 border-white/10" : "bg-white/95 border-black/5"}`}
-            >
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-8">
-                  <h2 className={`text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Cài đặt</h2>
-                  <button 
-                    onClick={() => setActiveTab(lastTab)}
-                    className={`p-2 rounded-full transition-colors ${isDark ? "hover:bg-white/10 text-slate-400" : "hover:bg-black/5 text-slate-500"}`}
-                  >
-                    <X className="h-6 w-6" />
-                  </button>
-                </div>
-                <SettingsContent 
-                  isDark={isDark} 
-                  setIsDark={setIsDark} 
-                  isSidebar 
-                  isDev={isDev} 
-                  setIsDev={setIsDev} 
-                  liquidGlass={liquidGlass}
-                  setLiquidGlass={setLiquidGlass}
-                  user={user}
-                  userData={userData}
-                  setUserData={setUserData}
-                  onAlert={(title, msg) => setCustomAlert({ title, message: msg })}
-                  onLogin={handleLogin}
-                />
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
 
       <div className="flex-1 overflow-y-auto pb-32 flex flex-col">
         <AnimatePresence mode="wait">
@@ -1963,32 +2050,129 @@ export default function App() {
             {displayTab === "Sự kiện" && (
               <EventsContent isDark={isDark} liquidGlass={liquidGlass} />
             )}
-            {displayTab === "Quản trị" && (isAdmin || isDev) && <AdminContent isDark={isDark} liquidGlass={liquidGlass} />}
-            {displayTab !== "Trang chủ" && displayTab !== "Truyền hình" && displayTab !== "Phát thanh" && displayTab !== "Quản trị" && (
-              <div className={`flex items-center justify-center h-full ${isDark ? "text-slate-500" : "text-slate-400"}`}>
-                {displayTab} - Nội dung
-              </div>
-            )}
+            {displayTab === "Cài đặt" && (
+      <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 max-w-4xl mx-auto w-full">
+        <div className="flex items-center gap-3 mb-6">
+          <Settings className="w-8 h-8 text-purple-500" />
+          <h2 className={`text-3xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Cài đặt</h2>
+        </div>
+        <SettingsContent 
+          isDark={isDark} 
+          setIsDark={setIsDark} 
+          isDev={isDev} 
+          setIsDev={setIsDev} 
+          liquidGlass={liquidGlass}
+          setLiquidGlass={setLiquidGlass}
+          useSidebar={useSidebar}
+          setUseSidebar={setUseSidebar}
+          user={user}
+          userData={userData}
+          setUserData={setUserData}
+          onAlert={(title, msg) => setCustomAlert({ title, message: msg })}
+          onLogin={handleLogin}
+        />
+      </div>
+    )}
+    {displayTab === "Quản trị" && (isAdmin || isDev) && <AdminContent isDark={isDark} liquidGlass={liquidGlass} />}
           </motion.div>
         </AnimatePresence>
       </div>
       
-      <div className={`fixed ${liquidGlass ? "bottom-6 left-0 right-0 px-2 md:px-4" : "bottom-0 left-0 right-0 px-0"} z-50 flex justify-center pointer-events-none`}>
+      {/* Sidebar Redesign */}
+      {useSidebar && (
+        <div className={`fixed z-50 transition-all duration-500 left-0 top-0 h-full flex flex-col border-r hidden md:flex ${
+          isDark ? "bg-[#0b1221] border-white/5" : "bg-white border-slate-200"
+        } ${isSidebarExpanded ? "w-72" : "w-24"}`}>
+          {/* Logo Section */}
+          <div className="p-8 flex items-center gap-4 border-b border-white/5">
+            <div className="w-12 h-12 flex items-center justify-center">
+              <img 
+                src="https://static.wikia.nocookie.net/ftv/images/9/93/Vpl.png/revision/latest?cb=20260412135144&path-prefix=vi" 
+                alt="Vplay" 
+                className="w-full h-full object-contain"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            {isSidebarExpanded && (
+              <motion.span 
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className={`font-bold text-2xl tracking-tight ${isDark ? "text-white" : "text-slate-900"}`}
+              >
+                Vplay
+              </motion.span>
+            )}
+          </div>
+
+          {/* Navigation Items */}
+          <div className="flex-1 py-8 px-4 space-y-3">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === (tab.id || tab.name);
+              return (
+                <button
+                  key={tab.name}
+                  onClick={() => setActiveTab(tab.id || tab.name)}
+                  className={`w-full flex items-center gap-5 p-4 rounded-2xl transition-all relative group ${
+                    isActive 
+                      ? (isDark ? "bg-white/5 text-white" : "bg-slate-100 text-purple-600") 
+                      : (isDark ? "text-slate-400 hover:bg-white/5 hover:text-white" : "text-slate-600 hover:bg-slate-50")
+                  }`}
+                >
+                  <Icon className={`w-6 h-6 transition-colors ${isActive ? "text-red-500" : "group-hover:text-white"}`} />
+                  {isSidebarExpanded && (
+                    <span className="font-semibold text-lg">{tab.name}</span>
+                  )}
+                  {isActive && isSidebarExpanded && (
+                    <motion.div 
+                      layoutId="activeDot"
+                      className="absolute right-6 w-2 h-2 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" 
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Footer */}
+          <div className="p-8 text-center border-t border-white/5 space-y-2">
+            <p className="text-sm text-slate-500 font-mono opacity-50">vDev.26415</p>
+            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-yellow-400 text-[10px] font-black text-black">
+              <Sparkles size={10} />
+              PREVIEW
+            </div>
+          </div>
+
+          {/* Collapse Toggle */}
+          <button 
+            onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
+            className={`absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-xl hover:scale-110 transition-transform z-[60]`}
+          >
+            {isSidebarExpanded ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+          </button>
+        </div>
+      )}
+
+      <div className={`fixed z-50 transition-all duration-500 ${
+        useSidebar 
+          ? "md:hidden bottom-0 left-0 w-full flex justify-center pb-4 md:pb-8" 
+          : "bottom-0 left-0 w-full flex justify-center pb-4 md:pb-8"
+      }`}>
         <div className={`flex items-center gap-1 md:gap-3 pointer-events-auto ${liquidGlass ? "" : "w-full"}`}>
           <AnimatePresence mode="popLayout">
             {!isSearchOpen && (
               <motion.nav 
                 key="nav-bar"
-                layout
                 initial={{ x: -20, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
-                exit={{ x: -20, opacity: 0 }}
+                exit={{ x: -20, opacity: 0, scale: 0.95 }}
+                transition={{ type: "spring", bounce: 0, duration: 0.4 }}
                 className={`flex items-center gap-2 p-2 transition-all duration-500 overflow-hidden ${
                   liquidGlass 
                     ? "rounded-full border shadow-[0_20px_50px_rgba(0,0,0,0.3)] backdrop-blur-3xl max-w-full" 
                     : "rounded-none border-t w-full justify-around backdrop-blur-none"
-                } bg-white/60 border-white/40 shadow-2xl`}>
-                <div className={`flex items-center ${liquidGlass ? "gap-4 md:gap-6" : "gap-0 w-full justify-around"}`}>
+                } bg-white/60 border-white/40 shadow-2xl ${useSidebar ? "flex-col py-6" : "flex-row"}`}>
+                <div className={`flex items-center ${liquidGlass ? (useSidebar ? "flex-col gap-6" : "gap-4 md:gap-6") : "gap-0 w-full justify-around"}`}>
                   {tabs.map((tab) => {
                     const Icon = tab.icon;
                     const isActive = activeTab === (tab.id || tab.name);
@@ -2094,13 +2278,12 @@ export default function App() {
                 />
                 <motion.div 
                   key="search-expanded"
-                  layoutId="search-button"
-                  initial={{ width: 60, height: 60, opacity: 0, borderRadius: "50%" }}
-                  animate={{ width: "auto", height: 60, opacity: 1, borderRadius: liquidGlass ? "30px" : "12px" }}
-                  exit={{ width: 60, height: 60, opacity: 0, borderRadius: "50%" }}
+                  initial={{ width: 60, height: 60, opacity: 0 }}
+                  animate={{ width: "auto", height: 60, opacity: 1 }}
+                  exit={{ width: 60, height: 60, opacity: 0 }}
                   transition={{ type: "spring", stiffness: 300, damping: 30 }}
                   className={`p-1.5 flex items-center border shadow-[0_20px_50px_rgba(0,0,0,0.3)] overflow-hidden bg-white/60 border-white/40 shadow-2xl ${
-                    liquidGlass ? "backdrop-blur-3xl" : "backdrop-blur-none"
+                    liquidGlass ? "rounded-[30px] backdrop-blur-3xl" : "rounded-xl backdrop-blur-none"
                   }`}
                 >
                   <SearchBar 
@@ -2137,5 +2320,8 @@ export default function App() {
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 }
+
+export default App;
